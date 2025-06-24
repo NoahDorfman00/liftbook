@@ -1,0 +1,13 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/LICENSE.txt",
+      "sha1": "47b573e3824cd5e02a1a3ae99e2735b49e0256e4"
+    },
+    {
+      "path": "assets/fonts/Schoolbell-Regular.ttf",
+      "sha1": "d7e91ce8f32d168643511405072e201bad2b6038"
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+import React from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    Pressable,
+    useColorScheme,
+    Animated,
+    Platform,
+    UIManager,
+    LayoutAnimation,
+} from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+interface Set {
+    weight: string;
+    reps: string;
+}
+
+interface Movement {
+    name: string;
+    sets: Set[];
+}
+
+interface MessageBubbleProps {
+    type: 'title' | 'movement';
+    content: string | Movement;
+    onLongPress?: () => void;
+    onPress?: () => void;
+    isEditing?: boolean;
+    isLast?: boolean;
+}
+
+const MessageBubble: React.FC<MessageBubbleProps> = ({
+    type,
+    content,
+    onLongPress,
+    onPress,
+    isEditing = false,
+    isLast = false,
+}) => {
+    const pressableHitSlop = { top: 2, bottom: 2, left: 0, right: 0 }; // 28px container, 24px touch area
+
+    if (type === 'title') {
+        return (
+            <>
+                <View style={styles.titleLineContainer}>
+                    <Pressable hitSlop={pressableHitSlop} onLongPress={onLongPress} onPress={onPress}>
+                        <Text style={styles.titleText}>{content as string}</Text>
+                    </Pressable>
+                </View>
+                {!isLast && <View style={styles.emptyLine} />}
+            </>
+        );
+    }
+
+    const movement = content as Movement;
+    return (
+        <>
+            <View style={styles.movementLineContainer}>
+                <Pressable hitSlop={pressableHitSlop} onLongPress={onLongPress} onPress={onPress}>
+                    <Text style={styles.movementText}>{movement.name}</Text>
+                </Pressable>
+            </View>
+            {movement.sets.map((set, idx) => (
+                <View style={styles.lineContainer} key={idx}>
+                    <Pressable hitSlop={pressableHitSlop} onLongPress={onLongPress} onPress={onPress}>
+                        <Text style={[styles.text, styles.setText]}>{set.weight} × {set.reps}</Text>
+                    </Pressable>
+                </View>
+            ))}
+            {!isLast && <View style={styles.emptyLine} />}
+        </>
+    );
+};
+
+const styles = StyleSheet.create({
+    lineContainer: {
+        height: 24, // fits ruled line for sets
+        justifyContent: 'flex-end',
+    },
+    titleLineContainer: {
+        height: 48, // Two lines
+        justifyContent: 'center',
+    },
+    movementLineContainer: {
+        height: 28, // allow descenders for movement name
+        justifyContent: 'flex-end',
+        marginBottom: -4, // shrink gap below movement name
+    },
+    text: {
+        fontSize: 20,
+        fontFamily: 'Schoolbell',
+        color: '#000',
+        padding: 0,
+        margin: 0,
+    },
+    titleText: {
+        fontSize: 32,
+        fontFamily: 'Schoolbell',
+        color: '#000',
+        fontWeight: 'bold',
+        textAlignVertical: 'center',
+        textAlign: 'left',
+    },
+    movementText: {
+        fontSize: 20,
+        fontFamily: 'Schoolbell',
+        color: '#000',
+    },
+    setText: {
+        fontSize: 20,
+        marginLeft: 8,
+    },
+    emptyLine: {
+        height: 24,
+    },
+    setLineContainer: {
+        // no negative margin here
+    },
+});
+
+export default MessageBubble; 
