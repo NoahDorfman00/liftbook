@@ -64,21 +64,15 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     };
 
     useEffect(() => {
-        // Only auto-focus for new lifts (when entering title) or during active editing
+        // Auto-focus when adding sets (double mode), when entering a new lift title,
+        // or when editing existing values with initialValues provided
         const isNewLift = mode === 'single' &&
             firstPlaceholder === 'Enter lift title...' &&
             !initialValues?.first;
 
-        // Only consider active editing if we have initial values (editing existing) or it's a new lift
-        const shouldAutoFocus = isNewLift || (initialValues && (mode === 'single' || mode === 'double'));
+        const shouldAutoFocus = mode === 'double' || isNewLift || (initialValues && (mode === 'single' || mode === 'double'));
 
         if (shouldAutoFocus) {
-            console.log('Auto-focusing input:', {
-                isNewLift,
-                hasInitialValues: !!initialValues,
-                mode,
-                firstPlaceholder
-            });
             setTimeout(() => {
                 if (mode === 'single' || mode === 'double') {
                     firstInputRef.current?.focus();

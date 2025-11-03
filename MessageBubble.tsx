@@ -29,8 +29,17 @@ interface Movement {
 interface MessageBubbleProps {
     type: 'title' | 'movement';
     content: string | Movement;
-    onLongPress?: () => void;
-    onPress?: () => void;
+    // Title handlers
+    onTitlePress?: () => void;
+    onTitleLongPress?: () => void;
+    // Movement name handlers
+    onMovementPress?: () => void;
+    onMovementLongPress?: () => void;
+    // Set row handlers (index provided)
+    onSetPress?: (setIndex: number) => void;
+    onSetLongPress?: (setIndex: number) => void;
+    // Empty line under movement
+    onEmptyLinePress?: () => void;
     isEditing?: boolean;
     isLast?: boolean;
 }
@@ -38,8 +47,13 @@ interface MessageBubbleProps {
 const MessageBubble: React.FC<MessageBubbleProps> = ({
     type,
     content,
-    onLongPress,
-    onPress,
+    onTitlePress,
+    onTitleLongPress,
+    onMovementPress,
+    onMovementLongPress,
+    onSetPress,
+    onSetLongPress,
+    onEmptyLinePress,
     isEditing = false,
     isLast = false,
 }) => {
@@ -49,7 +63,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
         return (
             <>
                 <View style={styles.titleLineContainer}>
-                    <Pressable hitSlop={pressableHitSlop} onLongPress={onLongPress} onPress={onPress}>
+                    <Pressable hitSlop={pressableHitSlop} onLongPress={onTitleLongPress} onPress={onTitlePress}>
                         <Text style={styles.titleText}>{content as string}</Text>
                     </Pressable>
                 </View>
@@ -62,17 +76,24 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     return (
         <>
             <View style={styles.movementLineContainer}>
-                <Pressable hitSlop={pressableHitSlop} onLongPress={onLongPress} onPress={onPress}>
+                <Pressable hitSlop={pressableHitSlop} onLongPress={onMovementLongPress} onPress={onMovementPress}>
                     <Text style={styles.movementText}>{movement.name}</Text>
                 </Pressable>
             </View>
             {movement.sets.map((set, idx) => (
                 <View style={styles.lineContainer} key={idx}>
-                    <Pressable hitSlop={pressableHitSlop} onLongPress={onLongPress} onPress={onPress}>
+                    <Pressable
+                        hitSlop={pressableHitSlop}
+                        onLongPress={() => onSetLongPress && onSetLongPress(idx)}
+                        onPress={() => onSetPress && onSetPress(idx)}
+                    >
                         <Text style={[styles.text, styles.setText]}>{set.weight} × {set.reps}</Text>
                     </Pressable>
                 </View>
             ))}
+            <Pressable onPress={onEmptyLinePress}>
+                <View style={styles.emptyLine} />
+            </Pressable>
             {!isLast && <View style={styles.emptyLine} />}
         </>
     );

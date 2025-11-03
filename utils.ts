@@ -57,6 +57,21 @@ export const saveLiftLocally = async (lift: Lift) => {
     }
 };
 
+// Delete a lift locally by ID
+export const deleteLiftLocally = async (liftId: string) => {
+    try {
+        const localData = await getLocalData();
+        if (localData.lifts[liftId]) {
+            delete localData.lifts[liftId];
+            localData.lastModified = Date.now();
+            await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(localData.lifts));
+            console.log(`Deleted lift locally with ID: ${liftId}`);
+        }
+    } catch (error) {
+        console.error('Error deleting lift locally:', error);
+    }
+};
+
 // Save movement data locally
 export const saveMovementLocally = async (name: string, dates: string[]) => {
     try {

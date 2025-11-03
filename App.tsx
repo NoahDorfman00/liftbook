@@ -13,6 +13,7 @@ import LiftEditorScreen from './LiftEditorScreen';
 import ChartsScreen from './ChartsScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import RNBootSplash from 'react-native-bootsplash';
 
 declare global {
   var selectedDate: string | undefined;
@@ -115,50 +116,30 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+// (Removed test and debug helpers for splash screen)
+
 export default function App() {
   const colorScheme = useColorScheme() || 'dark';
   const [isInitialized, setIsInitialized] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     const initialize = async () => {
       try {
-        const success = await initApp();
-        setIsInitialized(success);
+        await initApp();
+        RNBootSplash.hide({ fade: true });
+        setIsInitialized(true);
       } catch (error) {
-        console.error('App initialization failed with error:', error);
-      } finally {
-        setIsLoading(false);
+        console.error('❌ App initialization failed with error:', error);
+        // Still hide splash screen even if initialization fails
+        RNBootSplash.hide({ fade: true });
+        setIsInitialized(true);
       }
     };
-
     initialize();
   }, []);
 
-  if (isLoading) {
-    return (
-      <View style={{
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: colorScheme === 'dark' ? 'black' : 'white'
-      }}>
-        <Text style={{ color: colorScheme === 'dark' ? 'white' : 'black' }}>Loading...</Text>
-      </View>
-    );
-  }
-
   if (!isInitialized) {
-    return (
-      <View style={{
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: colorScheme === 'dark' ? 'black' : 'white'
-      }}>
-        <Text style={{ color: colorScheme === 'dark' ? 'white' : 'black' }}>Failed to initialize app. Please restart.</Text>
-      </View>
-    );
+    return null;
   }
 
   return (

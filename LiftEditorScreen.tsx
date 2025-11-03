@@ -11,6 +11,7 @@ import {
     Platform,
     Modal,
     Keyboard,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -21,7 +22,7 @@ import MessageBubble from './MessageBubble';
 import { RootStackParamList } from './types';
 import { getDatabase, ref, set } from 'firebase/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LOCAL_STORAGE_KEYS, retrieveLift, saveLiftLocally } from './utils';
+import { LOCAL_STORAGE_KEYS, retrieveLift, saveLiftLocally, deleteLiftLocally } from './utils';
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
@@ -77,6 +78,7 @@ const LiftEditorScreen: React.FC = () => {
     });
 
     const [entryMode, setEntryMode] = useState<EntryMode>('single');
+    const [editingTarget, setEditingTarget] = useState<'none' | 'title' | 'movementName' | 'set'>('none');
     const [editingMovementIndex, setEditingMovementIndex] = useState<number | null>(null);
     const [editingSetIndex, setEditingSetIndex] = useState<number | null>(null);
 
@@ -96,9 +98,10 @@ const LiftEditorScreen: React.FC = () => {
             hasLiftId: !!route.params?.liftId,
             title: lift.title,
             editingMovementIndex,
-            editingSetIndex
+            editingSetIndex,
+            editingTarget
         });
-    }, [entryMode, route.params?.liftId, lift.title, editingMovementIndex, editingSetIndex]);
+    }, [entryMode, route.params?.liftId, lift.title, editingMovementIndex, editingSetIndex, editingTarget]);
 
     useEffect(() => {
         console.log('LiftEditor mount effect:', {
@@ -117,6 +120,7 @@ const LiftEditorScreen: React.FC = () => {
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
+            setEditingTarget('none');
         }
     }, [route.params?.liftId]);
 
@@ -174,6 +178,7 @@ const LiftEditorScreen: React.FC = () => {
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
+            setEditingTarget('none');
             setIsLoading(false);
         } catch (error) {
             console.error('Error loading lift:', error);
@@ -207,57 +212,65 @@ const LiftEditorScreen: React.FC = () => {
 
     const handleEntrySubmit = ({ first, second }: { first: string; second?: string }) => {
         if (entryMode === 'single') {
-            if (lift.title === '') {
-                // Setting title
+            if (editingTarget === 'title') {
                 const newLift = { ...lift, title: first };
                 setLift(newLift);
                 saveLift(newLift);
-                // After setting title, immediately prompt for movement name
-                console.log('Title set, prompting for movement name');
+                setEditingTarget('none');
+                setEntryMode('single');
+            } else if (editingTarget === 'movementName' && editingMovementIndex !== null) {
+                const newLift = {
+                    ...lift,
+                    movements: lift.movements.map((m, idx) => idx === editingMovementIndex ? { ...m, name: first } : m)
+                };
+                setLift(newLift);
+                saveLift(newLift);
+                setEditingTarget('none');
+                setEditingMovementIndex(null);
+                setEntryMode('single');
+            } else if (lift.title === '') {
+                const newLift = { ...lift, title: first };
+                setLift(newLift);
+                saveLift(newLift);
                 setEntryMode('single');
             } else {
-                console.log('Adding new movement:', first);
-                // Adding new movement
                 const newLift = {
                     ...lift,
                     movements: [...lift.movements, { name: first, sets: [] }],
                 };
                 setLift(newLift);
-                // After adding movement, immediately switch to weight/reps entry
                 setEditingMovementIndex(lift.movements.length);
                 setEditingSetIndex(0);
+                setEditingTarget('set');
                 setEntryMode('double');
             }
         } else if (entryMode === 'double' && second) {
-            console.log('Adding set:', { weight: first, reps: second });
-            console.log('Current movement index:', editingMovementIndex);
-            console.log('Current movement:', lift.movements[editingMovementIndex!]);
-
-            // Create a deep copy of the lift to ensure state updates properly
             const newLift = {
                 ...lift,
                 movements: lift.movements.map((m, idx) => {
-                    if (idx === editingMovementIndex) {
-                        return {
-                            ...m,
-                            sets: [...m.sets, { weight: first, reps: second }]
-                        };
+                    if (idx !== editingMovementIndex) return m;
+                    if (editingTarget === 'set' && editingSetIndex !== null && m.sets[editingSetIndex]) {
+                        // Editing an existing set - update it
+                        const newSets = m.sets.slice();
+                        newSets[editingSetIndex] = { weight: first, reps: second };
+                        return { ...m, sets: newSets };
                     }
-                    return m;
+                    // Adding a new set
+                    return { ...m, sets: [...m.sets, { weight: first, reps: second }] };
                 })
             };
 
-            console.log('Updated lift:', newLift);
             setLift(newLift);
             saveLift(newLift);
 
-            // Prepare for the next set entry
-            setEditingSetIndex(newLift.movements[editingMovementIndex!].sets.length);
+            // Always prepare for a new set entry after submitting
+            if (editingMovementIndex !== null) {
+                setEditingSetIndex(newLift.movements[editingMovementIndex].sets.length);
+                setEditingTarget('set');
+            }
 
-            // Keep keyboard open and entry mode as double for next set
             setEntryMode('double');
 
-            // Scroll to the bottom to show the new set
             setTimeout(() => {
                 scrollViewRef.current?.scrollToEnd({ animated: true });
             }, 100);
@@ -266,38 +279,46 @@ const LiftEditorScreen: React.FC = () => {
 
     const handleMovementLongPress = (index: number) => {
         Alert.alert(
-            'Edit Movement',
-            'What would you like to do?',
+            'Delete movement?',
+            'This will delete the movement and all of its sets.',
             [
-                {
-                    text: 'Edit Name',
-                    onPress: () => {
-                        setEditingMovementIndex(index);
-                        setEditingSetIndex(null);
-                        setEntryMode('single');
-                    },
-                },
-                {
-                    text: 'Edit Sets',
-                    onPress: () => {
-                        setEditingMovementIndex(index);
-                        setEditingSetIndex(0);
-                        setEntryMode('double');
-                    },
-                },
+                { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Delete',
-                    onPress: () => {
-                        setLift(prev => ({
-                            ...prev,
-                            movements: prev.movements.filter((_, i) => i !== index),
-                        }));
-                    },
                     style: 'destructive',
+                    onPress: () => {
+                        const newLift = {
+                            ...lift,
+                            movements: lift.movements.filter((_, i) => i !== index),
+                        };
+                        setLift(newLift);
+                        saveLift(newLift);
+                    },
                 },
+            ]
+        );
+    };
+
+    const handleSetLongPress = (movementIndex: number, setIndex: number) => {
+        Alert.alert(
+            'Delete set?',
+            'This will delete the selected set.',
+            [
+                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Cancel',
-                    style: 'cancel',
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        const newLift = {
+                            ...lift,
+                            movements: lift.movements.map((m, mi) => {
+                                if (mi !== movementIndex) return m;
+                                return { ...m, sets: m.sets.filter((_, si) => si !== setIndex) };
+                            })
+                        };
+                        setLift(newLift);
+                        saveLift(newLift);
+                    },
                 },
             ]
         );
@@ -310,7 +331,26 @@ const LiftEditorScreen: React.FC = () => {
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
+            setEditingTarget('none');
         }
+    };
+
+    const handleDeleteLift = () => {
+        Alert.alert(
+            'Delete entire lift?',
+            'This will permanently delete this lift.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await deleteLiftLocally(lift.id);
+                        navigation.navigate('LiftList');
+                    }
+                }
+            ]
+        );
     };
 
     const handleDatePress = () => {
@@ -356,6 +396,10 @@ const LiftEditorScreen: React.FC = () => {
                             {new Date(lift.date.split('T')[0] + 'T12:00:00Z').toLocaleDateString()}
                         </Text>
                     </TouchableOpacity>
+                    <View style={{ flex: 1 }} />
+                    <TouchableOpacity onPress={handleDeleteLift} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
+                        <Image source={require('./assets/trash.png')} style={{ width: 28, height: 28 }} />
+                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.content}>
@@ -373,10 +417,11 @@ const LiftEditorScreen: React.FC = () => {
                                     <MessageBubble
                                         type="title"
                                         content={lift.title}
-                                        onLongPress={() => {
+                                        onTitlePress={() => {
                                             setEntryMode('single');
                                             setEditingMovementIndex(null);
                                             setEditingSetIndex(null);
+                                            setEditingTarget('title');
                                         }}
                                         isLast={lift.movements.length === 0}
                                     />
@@ -387,7 +432,26 @@ const LiftEditorScreen: React.FC = () => {
                                         key={index}
                                         type="movement"
                                         content={movement}
-                                        onLongPress={() => handleMovementLongPress(index)}
+                                        onMovementPress={() => {
+                                            setEditingMovementIndex(index);
+                                            setEditingSetIndex(null);
+                                            setEditingTarget('movementName');
+                                            setEntryMode('single');
+                                        }}
+                                        onMovementLongPress={() => handleMovementLongPress(index)}
+                                        onSetPress={(setIdx) => {
+                                            setEditingMovementIndex(index);
+                                            setEditingSetIndex(setIdx);
+                                            setEditingTarget('set');
+                                            setEntryMode('double');
+                                        }}
+                                        onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
+                                        onEmptyLinePress={() => {
+                                            setEditingMovementIndex(index);
+                                            setEditingSetIndex(lift.movements[index].sets.length);
+                                            setEditingTarget('set');
+                                            setEntryMode('double');
+                                        }}
                                         isEditing={editingMovementIndex === index}
                                         isLast={index === lift.movements.length - 1}
                                     />
@@ -401,17 +465,21 @@ const LiftEditorScreen: React.FC = () => {
                             mode={entryMode}
                             onSubmit={handleEntrySubmit}
                             initialValues={
-                                editingMovementIndex !== null && editingSetIndex !== null
-                                    ? {
-                                        first: lift.movements[editingMovementIndex].sets[editingSetIndex]?.weight || '',
-                                        second: lift.movements[editingMovementIndex].sets[editingSetIndex]?.reps || '',
-                                    }
-                                    : undefined
+                                editingTarget === 'title'
+                                    ? { first: lift.title }
+                                    : editingTarget === 'movementName' && editingMovementIndex !== null
+                                        ? { first: lift.movements[editingMovementIndex].name }
+                                        : editingTarget === 'set' && editingMovementIndex !== null && editingSetIndex !== null && lift.movements[editingMovementIndex].sets[editingSetIndex]
+                                            ? {
+                                                first: lift.movements[editingMovementIndex].sets[editingSetIndex].weight || '',
+                                                second: lift.movements[editingMovementIndex].sets[editingSetIndex].reps || '',
+                                              }
+                                            : undefined
                             }
                             firstPlaceholder={
-                                lift.title === ''
+                                lift.title === '' || editingTarget === 'title'
                                     ? 'Enter lift title...'
-                                    : editingMovementIndex !== null && editingSetIndex !== null
+                                    : editingTarget === 'set'
                                         ? 'Enter weight...'
                                         : 'Enter movement name...'
                             }
