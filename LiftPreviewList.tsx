@@ -9,6 +9,7 @@ import {
     Animated,
     Dimensions,
     Button,
+    Alert,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -25,7 +26,7 @@ interface LiftPreviewListProps {
     onCreateNewLift: () => void;
 }
 
-const { width } = Dimensions.get('window');
+const ACTION_WIDTH = 80;
 
 const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     lifts,
@@ -35,15 +36,18 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
 }) => {
     const colorScheme = useColorScheme() || 'dark';
     const isDark = colorScheme === 'dark';
+    const swipeableRefs = React.useRef<Map<string, Swipeable>>(new Map());
 
     const renderRightActions = (
         progress: Animated.AnimatedInterpolation<number>,
         _dragX: Animated.AnimatedInterpolation<number>,
-        liftId: string
+        liftId: string,
+        closeSwipeable: () => void
     ) => {
         const trans = progress.interpolate({
             inputRange: [0, 1],
-            outputRange: [width, 0],
+            outputRange: [ACTION_WIDTH, 0],
+            extrapolate: 'clamp',
         });
 
         return (
@@ -57,7 +61,20 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
             >
                 <TouchableOpacity
                     style={[styles.deleteButton]}
-                    onPress={() => onDeleteLift(liftId)}
+                    onPress={() => {
+                        Alert.alert(
+                            'Delete lift?',
+                            'This will permanently delete this lift.',
+                            [
+                                { 
+                                    text: 'Cancel', 
+                                    style: 'cancel',
+                                    onPress: () => closeSwipeable()
+                                },
+                                { text: 'Delete', style: 'destructive', onPress: () => onDeleteLift(liftId) },
+                            ]
+                        );
+                    }}
                 >
                     <Text style={styles.deleteButtonText}>Delete</Text>
                 </TouchableOpacity>
@@ -65,33 +82,49 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
         );
     };
 
-    const renderItem = ({ item }: { item: LiftPreview }) => (
-        <Swipeable
-            renderRightActions={(progress, dragX) =>
-                renderRightActions(progress, dragX, item.id)
-            }
-        >
-            <TouchableOpacity
-                style={[
-                    styles.liftPreview,
-                    {
-                        backgroundColor: '#fff',
-                    },
-                ]}
-                onPress={() => onSelectLift(item.id)}
+    const renderItem = ({ item }: { item: LiftPreview }) => {
+        return (
+            <Swipeable
+                ref={(ref) => {
+                    if (ref) {
+                        swipeableRefs.current.set(item.id, ref);
+                    } else {
+                        swipeableRefs.current.delete(item.id);
+                    }
+                }}
+                renderRightActions={(progress, dragX) => {
+                    const closeSwipeable = () => {
+                        const swipeable = swipeableRefs.current.get(item.id);
+                        swipeable?.close();
+                    };
+                    return renderRightActions(progress, dragX, item.id, closeSwipeable);
+                }}
+                rightThreshold={ACTION_WIDTH / 2}
+                overshootRight={false}
+                friction={2}
             >
-                <Text style={[styles.date, { color: '#666' }]}>
-                    {new Date(item.date.split('T')[0] + 'T12:00:00Z').toLocaleDateString()}
-                </Text>
-                <Text
-                    style={[styles.title, { color: '#333' }]}
-                    numberOfLines={1}
+                <TouchableOpacity
+                    style={[
+                        styles.liftPreview,
+                        {
+                            backgroundColor: '#fff',
+                        },
+                    ]}
+                    onPress={() => onSelectLift(item.id)}
                 >
-                    {item.title}
-                </Text>
-            </TouchableOpacity>
-        </Swipeable>
-    );
+                    <Text style={[styles.date, { color: '#666' }]}>
+                        {new Date(item.date.split('T')[0] + 'T12:00:00Z').toLocaleDateString()}
+                    </Text>
+                    <Text
+                        style={[styles.title, { color: '#333' }]}
+                        numberOfLines={1}
+                    >
+                        {item.title}
+                    </Text>
+                </TouchableOpacity>
+            </Swipeable>
+        );
+    };
 
     return (
         <View style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
@@ -168,7 +201,7 @@ const styles = StyleSheet.create({
     },
     rightAction: {
         marginVertical: 8,
-        width: 80,
+        width: ACTION_WIDTH,
     },
     deleteButton: {
         flex: 1,
