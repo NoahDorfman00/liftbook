@@ -11,6 +11,7 @@ import {
     TouchableOpacity,
     Text,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type EntryMode = 'single' | 'double' | 'hidden';
 
@@ -43,6 +44,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     });
 
     const colorScheme = useColorScheme() || 'dark';
+    const insets = useSafeAreaInsets();
     const [firstValue, setFirstValue] = useState(initialValues?.first || '');
     const [secondValue, setSecondValue] = useState(initialValues?.second || '');
     const [showWarning, setShowWarning] = useState(false);
@@ -51,6 +53,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const secondInputRef = useRef<TextInput>(null);
     const isSubmitting = useRef(false);
     const warningTimeout = useRef<NodeJS.Timeout>();
+    const keyboardHeight = useRef(new Animated.Value(0));
 
     const showWarningMessage = (message: string) => {
         setWarningMessage(message);
@@ -92,7 +95,45 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     }, [initialValues]);
 
     useEffect(() => {
-        const keyboardDidHide = Keyboard.addListener('keyboardDidHide', () => {
+        const keyboardEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const keyboardHideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        
+        const keyboardWillShow = Keyboard.addListener(keyboardEventName, (e) => {
+            const target = Math.max(0, e.endCoordinates.height - (insets.bottom || 0) - 8);
+            if (Platform.OS === 'ios') {
+                // Use spring animation to match iOS keyboard behavior more closely
+                Animated.spring(keyboardHeight.current, {
+                    toValue: target,
+                    useNativeDriver: false,
+                    tension: 65,
+                    friction: 11,
+                }).start();
+            } else {
+                Animated.timing(keyboardHeight.current, {
+                    toValue: target,
+                    duration: 100,
+                    useNativeDriver: false,
+                }).start();
+            }
+        });
+
+        const keyboardWillHide = Keyboard.addListener(keyboardHideEventName, (e) => {
+            if (Platform.OS === 'ios') {
+                // Use spring animation to match iOS keyboard behavior more closely
+                Animated.spring(keyboardHeight.current, {
+                    toValue: 0,
+                    useNativeDriver: false,
+                    tension: 65,
+                    friction: 11,
+                }).start();
+            } else {
+                Animated.timing(keyboardHeight.current, {
+                    toValue: 0,
+                    duration: 100,
+                    useNativeDriver: false,
+                }).start();
+            }
+
             if (!isSubmitting.current && onKeyboardDismiss) {
                 console.log('Keyboard hidden, clearing values');
                 onKeyboardDismiss();
@@ -102,12 +143,13 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         });
 
         return () => {
-            keyboardDidHide.remove();
+            keyboardWillShow.remove();
+            keyboardWillHide.remove();
             if (warningTimeout.current) {
                 clearTimeout(warningTimeout.current);
             }
         };
-    }, [onKeyboardDismiss]);
+    }, [onKeyboardDismiss, insets.bottom]);
 
     const handleSubmit = () => {
         const isWeightEntry = firstPlaceholder === 'Enter weight...';
@@ -154,10 +196,17 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     }
 
     return (
-        <View
+        <Animated.View
             style={[
                 styles.container,
-                { backgroundColor: '#f5f5f5' }
+                { 
+                    backgroundColor: '#f5f5f5',
+                    transform: [
+                        {
+                            translateY: Animated.multiply(keyboardHeight.current, -1),
+                        },
+                    ],
+                }
             ]}
         >
             {showWarning && (
@@ -220,7 +269,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                     />
                 )}
             </View>
-        </View>
+        </Animated.View>
     );
 };
 
@@ -236,6 +285,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingTop: 8,
+        paddingBottom: 8,
     },
     input: {
         flex: 1,

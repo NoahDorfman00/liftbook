@@ -378,9 +378,8 @@ const LiftEditorScreen: React.FC = () => {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior={undefined}
                 style={styles.keyboardAvoidingView}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
                 <View style={styles.header}>
                     <TouchableOpacity
