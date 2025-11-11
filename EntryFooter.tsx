@@ -1,4 +1,4 @@
-git import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     TextInput,
@@ -24,6 +24,7 @@ interface EntryFooterProps {
     suggestions?: string[];
     onSuggestionSelect?: (suggestion: string) => void;
     onFirstValueChange?: (value: string) => void;
+    onFirstFieldFocus?: () => void;
 }
 
 const isValidNumber = (value: string): boolean => {
@@ -41,6 +42,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     suggestions = [],
     onSuggestionSelect,
     onFirstValueChange,
+    onFirstFieldFocus,
 }) => {
     console.log('EntryFooter render:', {
         mode,
@@ -341,6 +343,12 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         }}
                         onFocus={() => {
                             userDismissedKeyboardRef.current = false;
+                            console.log('EntryFooter first input focus', {
+                                mode,
+                                firstPlaceholder,
+                                hasInitialValues: !!initialValues,
+                            });
+                            onFirstFieldFocus?.();
                         }}
                         placeholder={firstPlaceholder}
                         placeholderTextColor={'#999'}

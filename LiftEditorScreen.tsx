@@ -12,6 +12,8 @@ import {
     Modal,
     Keyboard,
     Image,
+    LayoutChangeEvent,
+    LayoutRectangle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -84,6 +86,13 @@ const LiftEditorScreen: React.FC = () => {
     const [firstInputValue, setFirstInputValue] = useState('');
 
     const scrollViewRef = useRef<ScrollView>(null);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [footerHeight, setFooterHeight] = useState(0);
+    const titleLayoutRef = useRef<LayoutRectangle | null>(null);
+    const movementLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
+    const setLayoutsRef = useRef<Record<string, LayoutRectangle>>({});
+    const addSetLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
+    const scrollRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
     const [selectedDate, setSelectedDate] = useState(() => {
@@ -143,6 +152,7 @@ const LiftEditorScreen: React.FC = () => {
                     screenHeight: e.endCoordinates.screenY,
                     timestamp: Date.now()
                 });
+                setKeyboardHeight(e.endCoordinates.height);
             }
         );
 
@@ -150,6 +160,7 @@ const LiftEditorScreen: React.FC = () => {
             Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
             () => {
                 console.log('LiftEditor - Keyboard hiding, timestamp:', Date.now());
+                setKeyboardHeight(0);
             }
         );
 
@@ -158,6 +169,190 @@ const LiftEditorScreen: React.FC = () => {
             keyboardWillHide.remove();
         };
     }, []);
+
+    useEffect(() => {
+        if (!lift.title) {
+            titleLayoutRef.current = null;
+        }
+    }, [lift.title]);
+
+    const scrollToActiveEditingTarget = React.useCallback(() => {
+        if (!scrollViewRef.current) {
+            console.log('scrollToActiveEditingTarget skipped: no scrollViewRef');
+            return false;
+        }
+
+        let targetY: number | null = null;
+
+        if (editingTarget === 'title') {
+            targetY = titleLayoutRef.current?.y ?? 0;
+        } else if (editingTarget === 'movementName' && editingMovementIndex !== null) {
+            const movementLayout = movementLayoutsRef.current[editingMovementIndex];
+            if (movementLayout) {
+                targetY = movementLayout.y;
+            }
+        } else if (editingTarget === 'set' && editingMovementIndex !== null) {
+            const movementLayout = movementLayoutsRef.current[editingMovementIndex];
+            const movement = lift.movements[editingMovementIndex];
+            if (movementLayout && movement) {
+                if (editingSetIndex != null && editingSetIndex < movement.sets.length) {
+                    const setLayout = setLayoutsRef.current[`${editingMovementIndex}-${editingSetIndex}`];
+                    if (setLayout) {
+                        targetY = movementLayout.y + setLayout.y;
+                    }
+                } else {
+                    const addSetLayout = addSetLayoutsRef.current[editingMovementIndex];
+                    if (addSetLayout) {
+                        targetY = movementLayout.y + addSetLayout.y;
+                    } else {
+                        targetY = movementLayout.y + movementLayout.height;
+                    }
+                }
+            }
+        }
+
+        if (targetY == null) {
+            console.log('scrollToActiveEditingTarget no target', {
+                editingTarget,
+                editingMovementIndex,
+                editingSetIndex,
+                hasTitleLayout: !!titleLayoutRef.current,
+                hasMovementLayout: editingMovementIndex != null ? !!movementLayoutsRef.current[editingMovementIndex] : null,
+                hasSetLayout: editingMovementIndex != null && editingSetIndex != null
+                    ? !!setLayoutsRef.current[`${editingMovementIndex}-${editingSetIndex}`]
+                    : null,
+                hasAddSetLayout: editingMovementIndex != null ? !!addSetLayoutsRef.current[editingMovementIndex] : null,
+            });
+            return false;
+        }
+
+        const SCROLL_MARGIN = 128;
+        const scrollY = Math.max(0, targetY - SCROLL_MARGIN);
+        console.log('scrollToActiveEditingTarget scrolling', {
+            editingTarget,
+            editingMovementIndex,
+            editingSetIndex,
+            targetY,
+            scrollY,
+            keyboardHeight,
+            footerBottomPadding: contentBottomPadding,
+        });
+        scrollViewRef.current.scrollTo({ y: scrollY, animated: true });
+        return true;
+    }, [
+        editingMovementIndex,
+        editingSetIndex,
+        editingTarget,
+        keyboardHeight,
+        lift.movements,
+    ]);
+
+    const attemptScrollToActiveTarget = React.useCallback(() => {
+        if (scrollRetryTimeoutRef.current) {
+            clearTimeout(scrollRetryTimeoutRef.current);
+            scrollRetryTimeoutRef.current = null;
+        }
+
+        const success = scrollToActiveEditingTarget();
+        console.log('attemptScrollToActiveTarget result', {
+            success,
+            editingTarget,
+            editingMovementIndex,
+            editingSetIndex,
+            keyboardHeight,
+        });
+
+        if (!success) {
+            const retryScroll = () => {
+                const retrySuccess = scrollToActiveEditingTarget();
+                if (!retrySuccess) {
+                    scrollRetryTimeoutRef.current = setTimeout(retryScroll, 200);
+                } else {
+                    scrollRetryTimeoutRef.current = null;
+                }
+            };
+
+            scrollRetryTimeoutRef.current = setTimeout(retryScroll, 200);
+        }
+    }, [scrollToActiveEditingTarget]);
+
+    const registerTitleLayout = React.useCallback((layout: LayoutRectangle) => {
+        titleLayoutRef.current = layout;
+        if (editingTarget === 'title') {
+            const scroll = () => attemptScrollToActiveTarget();
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(scroll);
+            } else {
+                scroll();
+            }
+        }
+    }, [attemptScrollToActiveTarget, editingTarget]);
+
+    const registerMovementLayout = React.useCallback((movementIndex: number, layout: LayoutRectangle) => {
+        movementLayoutsRef.current[movementIndex] = layout;
+        if (editingMovementIndex === movementIndex && editingTarget !== 'none') {
+            const scroll = () => attemptScrollToActiveTarget();
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(scroll);
+            } else {
+                scroll();
+            }
+        }
+    }, [attemptScrollToActiveTarget, editingMovementIndex, editingTarget]);
+
+    const registerSetLayout = React.useCallback((
+        movementIndex: number,
+        setIndex: number,
+        layout: LayoutRectangle
+    ) => {
+        setLayoutsRef.current[`${movementIndex}-${setIndex}`] = layout;
+        if (editingTarget === 'set' && editingMovementIndex === movementIndex) {
+            const scroll = () => attemptScrollToActiveTarget();
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(scroll);
+            } else {
+                scroll();
+            }
+        }
+    }, [attemptScrollToActiveTarget, editingMovementIndex, editingTarget]);
+
+    const registerAddSetLayout = React.useCallback((movementIndex: number, layout: LayoutRectangle) => {
+        addSetLayoutsRef.current[movementIndex] = layout;
+        if (editingTarget === 'set' && editingMovementIndex === movementIndex) {
+            const scroll = () => attemptScrollToActiveTarget();
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(scroll);
+            } else {
+                scroll();
+            }
+        }
+    }, [attemptScrollToActiveTarget, editingMovementIndex, editingTarget]);
+
+    useEffect(() => {
+        if (editingTarget === 'none') {
+            if (scrollRetryTimeoutRef.current) {
+                clearTimeout(scrollRetryTimeoutRef.current);
+                scrollRetryTimeoutRef.current = null;
+            }
+            return;
+        }
+
+        attemptScrollToActiveTarget();
+
+        return () => {
+            if (scrollRetryTimeoutRef.current) {
+                clearTimeout(scrollRetryTimeoutRef.current);
+                scrollRetryTimeoutRef.current = null;
+            }
+        };
+    }, [
+        attemptScrollToActiveTarget,
+        editingMovementIndex,
+        editingSetIndex,
+        editingTarget,
+        keyboardHeight,
+        lift.movements,
+    ]);
 
     const loadLift = async (liftId: string) => {
         try {
@@ -566,6 +761,48 @@ const LiftEditorScreen: React.FC = () => {
         setFirstInputValue(value);
     }, []);
 
+    const handleFooterLayout = React.useCallback((event: LayoutChangeEvent) => {
+        const { height } = event.nativeEvent.layout;
+        setFooterHeight((prev) => (Math.abs(prev - height) < 1 ? prev : height));
+    }, []);
+
+    const contentBottomPadding = footerHeight + keyboardHeight + 48;
+
+    const scrollToEnd = React.useCallback(() => {
+        if (!scrollViewRef.current) {
+            return;
+        }
+        scrollViewRef.current.scrollToEnd({ animated: true });
+    }, []);
+
+    const handleEntryFooterFocus = React.useCallback(() => {
+        console.log('LiftEditor handleEntryFooterFocus', {
+            editingTarget,
+            editingMovementIndex,
+            editingSetIndex,
+            entryMode,
+            keyboardHeight,
+        });
+
+        if (editingTarget === 'none') {
+            // User is likely adding a brand new movement/set; ensure bottom content clears the footer.
+            setTimeout(() => {
+                console.log('LiftEditor handleEntryFooterFocus -> scrollToEnd fallback');
+                scrollToEnd();
+            }, 50);
+        } else {
+            attemptScrollToActiveTarget();
+        }
+    }, [
+        attemptScrollToActiveTarget,
+        editingMovementIndex,
+        editingSetIndex,
+        editingTarget,
+        entryMode,
+        keyboardHeight,
+        scrollToEnd,
+    ]);
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
             <KeyboardAvoidingView
@@ -596,7 +833,10 @@ const LiftEditorScreen: React.FC = () => {
                     <ScrollView
                         ref={scrollViewRef}
                         style={styles.scrollView}
-                        contentContainerStyle={styles.scrollContent}
+                        contentContainerStyle={[
+                            styles.scrollContent,
+                            { paddingBottom: contentBottomPadding }
+                        ]}
                         keyboardShouldPersistTaps="handled"
                         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                         onLayout={handleScrollViewLayout}
@@ -605,80 +845,95 @@ const LiftEditorScreen: React.FC = () => {
                             <RuledLines />
                             <View style={styles.contentContainer}>
                                 {lift.title && (
-                                    <MessageBubble
-                                        type="title"
-                                        content={lift.title}
-                                        onTitlePress={() => {
-                                            setEntryMode('single');
-                                            setEditingMovementIndex(null);
-                                            setEditingSetIndex(null);
-                                            setEditingTarget('title');
-                                        }}
-                                        isLast={lift.movements.length === 0}
-                                    />
+                                    <View
+                                        collapsable={false}
+                                        onLayout={(event) => registerTitleLayout(event.nativeEvent.layout)}
+                                    >
+                                        <MessageBubble
+                                            type="title"
+                                            content={lift.title}
+                                            onTitlePress={() => {
+                                                setEntryMode('single');
+                                                setEditingMovementIndex(null);
+                                                setEditingSetIndex(null);
+                                                setEditingTarget('title');
+                                            }}
+                                            isLast={lift.movements.length === 0}
+                                        />
+                                    </View>
                                 )}
 
                                 {lift.movements.map((movement, index) => (
-                                    <MessageBubble
+                                    <View
                                         key={index}
-                                        type="movement"
-                                        content={movement}
-                                        onMovementPress={() => {
-                                            setEditingMovementIndex(index);
-                                            setEditingSetIndex(null);
-                                            setEditingTarget('movementName');
-                                            setEntryMode('single');
-                                        }}
-                                        onMovementLongPress={() => handleMovementLongPress(index)}
-                                        onSetPress={(setIdx) => {
-                                            setEditingMovementIndex(index);
-                                            setEditingSetIndex(setIdx);
-                                            setEditingTarget('set');
-                                            setEntryMode('double');
-                                        }}
-                                        onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
-                                        onEmptyLinePress={() => {
-                                            setEditingMovementIndex(index);
-                                            setEditingSetIndex(lift.movements[index].sets.length);
-                                            setEditingTarget('set');
-                                            setEntryMode('double');
-                                        }}
-                                        isEditing={editingMovementIndex === index}
-                                        isLast={index === lift.movements.length - 1}
-                                    />
+                                        collapsable={false}
+                                        onLayout={(event) => registerMovementLayout(index, event.nativeEvent.layout)}
+                                    >
+                                        <MessageBubble
+                                            type="movement"
+                                            content={movement}
+                                            onMovementPress={() => {
+                                                setEditingMovementIndex(index);
+                                                setEditingSetIndex(null);
+                                                setEditingTarget('movementName');
+                                                setEntryMode('single');
+                                            }}
+                                            onMovementLongPress={() => handleMovementLongPress(index)}
+                                            onSetPress={(setIdx) => {
+                                                setEditingMovementIndex(index);
+                                                setEditingSetIndex(setIdx);
+                                                setEditingTarget('set');
+                                                setEntryMode('double');
+                                            }}
+                                            onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
+                                            onEmptyLinePress={() => {
+                                                setEditingMovementIndex(index);
+                                                setEditingSetIndex(lift.movements[index].sets.length);
+                                                setEditingTarget('set');
+                                                setEntryMode('double');
+                                            }}
+                                            onSetLayout={(setIdx, layout) => registerSetLayout(index, setIdx, layout)}
+                                            onAddSetLayout={(layout) => registerAddSetLayout(index, layout)}
+                                            isEditing={editingMovementIndex === index}
+                                            isLast={index === lift.movements.length - 1}
+                                        />
+                                    </View>
                                 ))}
                             </View>
                         </View>
                     </ScrollView>
 
                     {!isLoading && (
-                        <EntryFooter
-                            mode={entryMode}
-                            onSubmit={handleEntrySubmit}
-                            initialValues={
-                                editingTarget === 'title'
-                                    ? { first: lift.title }
-                                    : editingTarget === 'movementName' && editingMovementIndex !== null
-                                        ? { first: lift.movements[editingMovementIndex].name }
-                                        : editingTarget === 'set' && editingMovementIndex !== null && editingSetIndex !== null && lift.movements[editingMovementIndex].sets[editingSetIndex]
-                                            ? {
-                                                first: lift.movements[editingMovementIndex].sets[editingSetIndex].weight || '',
-                                                second: lift.movements[editingMovementIndex].sets[editingSetIndex].reps || '',
-                                              }
-                                            : undefined
-                            }
-                            firstPlaceholder={
-                                lift.title === '' || editingTarget === 'title'
-                                    ? 'Enter lift title...'
-                                    : editingTarget === 'set'
-                                        ? 'Enter weight...'
-                                        : 'Enter movement name...'
-                            }
-                            secondPlaceholder="Enter reps..."
-                            onKeyboardDismiss={handleKeyboardDismiss}
-                            suggestions={suggestionsForInput}
-                            onFirstValueChange={handleFirstValueChange}
-                        />
+                        <View onLayout={handleFooterLayout}>
+                            <EntryFooter
+                                mode={entryMode}
+                                onSubmit={handleEntrySubmit}
+                                initialValues={
+                                    editingTarget === 'title'
+                                        ? { first: lift.title }
+                                        : editingTarget === 'movementName' && editingMovementIndex !== null
+                                            ? { first: lift.movements[editingMovementIndex].name }
+                                            : editingTarget === 'set' && editingMovementIndex !== null && editingSetIndex !== null && lift.movements[editingMovementIndex].sets[editingSetIndex]
+                                                ? {
+                                                    first: lift.movements[editingMovementIndex].sets[editingSetIndex].weight || '',
+                                                    second: lift.movements[editingMovementIndex].sets[editingSetIndex].reps || '',
+                                                }
+                                                : undefined
+                                }
+                                firstPlaceholder={
+                                    lift.title === '' || editingTarget === 'title'
+                                        ? 'Enter lift title...'
+                                        : editingTarget === 'set'
+                                            ? 'Enter weight...'
+                                            : 'Enter movement name...'
+                                }
+                                secondPlaceholder="Enter reps..."
+                                onKeyboardDismiss={handleKeyboardDismiss}
+                                suggestions={suggestionsForInput}
+                                onFirstValueChange={handleFirstValueChange}
+                                onFirstFieldFocus={handleEntryFooterFocus}
+                            />
+                        </View>
                     )}
                 </View>
             </KeyboardAvoidingView>

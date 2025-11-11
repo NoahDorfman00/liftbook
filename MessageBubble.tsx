@@ -3,13 +3,10 @@ import {
     View,
     Text,
     StyleSheet,
-    TouchableOpacity,
     Pressable,
-    useColorScheme,
-    Animated,
     Platform,
     UIManager,
-    LayoutAnimation,
+    LayoutRectangle,
 } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -42,6 +39,9 @@ interface MessageBubbleProps {
     onEmptyLinePress?: () => void;
     isEditing?: boolean;
     isLast?: boolean;
+    onTitleLayout?: (layout: LayoutRectangle) => void;
+    onSetLayout?: (setIndex: number, layout: LayoutRectangle) => void;
+    onAddSetLayout?: (layout: LayoutRectangle) => void;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
@@ -56,13 +56,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     onEmptyLinePress,
     isEditing = false,
     isLast = false,
+    onTitleLayout,
+    onSetLayout,
+    onAddSetLayout,
 }) => {
     const pressableHitSlop = { top: 2, bottom: 2, left: 0, right: 0 }; // 28px container, 24px touch area
 
     if (type === 'title') {
         return (
             <>
-                <View style={styles.titleLineContainer}>
+                <View
+                    style={styles.titleLineContainer}
+                    onLayout={(event) => onTitleLayout?.(event.nativeEvent.layout)}
+                >
                     <Pressable hitSlop={pressableHitSlop} onLongPress={onTitleLongPress} onPress={onTitlePress}>
                         <Text style={styles.titleText}>{content as string}</Text>
                     </Pressable>
@@ -81,7 +87,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </Pressable>
             </View>
             {movement.sets.map((set, idx) => (
-                <View style={styles.lineContainer} key={idx}>
+                <View
+                    style={styles.lineContainer}
+                    key={idx}
+                    onLayout={(event) => onSetLayout?.(idx, event.nativeEvent.layout)}
+                >
                     <Pressable
                         hitSlop={pressableHitSlop}
                         onLongPress={() => onSetLongPress && onSetLongPress(idx)}
@@ -92,7 +102,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </View>
             ))}
             <Pressable onPress={onEmptyLinePress}>
-                <View style={styles.emptyLine} />
+                <View
+                    style={styles.emptyLine}
+                    onLayout={(event) => onAddSetLayout?.(event.nativeEvent.layout)}
+                />
             </Pressable>
             {!isLast && <View style={styles.emptyLine} />}
         </>
