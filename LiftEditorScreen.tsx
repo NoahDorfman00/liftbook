@@ -20,9 +20,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import EntryFooter, { EntryMode } from './EntryFooter';
 import MessageBubble from './MessageBubble';
 import { RootStackParamList } from './types';
-import { getDatabase, ref, set } from 'firebase/database';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LOCAL_STORAGE_KEYS, retrieveLift, saveLiftLocally, deleteLiftLocally } from './utils';
+import { retrieveLift, retrieveLifts, saveLiftLocally, deleteLiftLocally } from './utils';
+import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
@@ -81,6 +80,8 @@ const LiftEditorScreen: React.FC = () => {
     const [editingTarget, setEditingTarget] = useState<'none' | 'title' | 'movementName' | 'set'>('none');
     const [editingMovementIndex, setEditingMovementIndex] = useState<number | null>(null);
     const [editingSetIndex, setEditingSetIndex] = useState<number | null>(null);
+    const [allLifts, setAllLifts] = useState<{ [id: string]: Lift }>({});
+    const [firstInputValue, setFirstInputValue] = useState('');
 
     const scrollViewRef = useRef<ScrollView>(null);
 
@@ -91,6 +92,15 @@ const LiftEditorScreen: React.FC = () => {
     });
 
     const isSubmitting = useRef<boolean>(false);
+
+    useEffect(() => {
+        const loadAllLifts = async () => {
+            const liftsMap = await retrieveLifts();
+            setAllLifts(liftsMap);
+        };
+
+        loadAllLifts();
+    }, []);
 
     useEffect(() => {
         console.log('EntryMode changed:', {
@@ -180,6 +190,7 @@ const LiftEditorScreen: React.FC = () => {
             setEditingSetIndex(null);
             setEditingTarget('none');
             setIsLoading(false);
+            setAllLifts(prev => ({ ...prev, [updatedLiftData.id]: updatedLiftData }));
         } catch (error) {
             console.error('Error loading lift:', error);
             setIsLoading(false);
@@ -205,6 +216,7 @@ const LiftEditorScreen: React.FC = () => {
             // Save locally using the existing utility function
             await saveLiftLocally(liftWithDate);
             console.log('Lift saved successfully:', liftWithDate);
+            setAllLifts(prev => ({ ...prev, [liftWithDate.id]: liftWithDate }));
         } catch (error) {
             console.error('Error saving lift:', error);
         }
@@ -293,6 +305,11 @@ const LiftEditorScreen: React.FC = () => {
                         };
                         setLift(newLift);
                         saveLift(newLift);
+                        setAllLifts(prev => {
+                            const updated = { ...prev };
+                            updated[newLift.id] = newLift;
+                            return updated;
+                        });
                     },
                 },
             ]
@@ -318,6 +335,11 @@ const LiftEditorScreen: React.FC = () => {
                         };
                         setLift(newLift);
                         saveLift(newLift);
+                        setAllLifts(prev => {
+                            const updated = { ...prev };
+                            updated[newLift.id] = newLift;
+                            return updated;
+                        });
                     },
                 },
             ]
@@ -346,6 +368,11 @@ const LiftEditorScreen: React.FC = () => {
                     style: 'destructive',
                     onPress: async () => {
                         await deleteLiftLocally(lift.id);
+                        setAllLifts(prev => {
+                            const updated = { ...prev };
+                            delete updated[lift.id];
+                            return updated;
+                        });
                         navigation.navigate('LiftList');
                     }
                 }
@@ -374,6 +401,170 @@ const LiftEditorScreen: React.FC = () => {
             y: event.nativeEvent.layout.y
         });
     };
+
+    const getLiftSortKey = (liftToScore: Lift) => {
+        const dateTimestamp = Date.parse(`${liftToScore.date}T00:00:00`);
+        const parsedDate = Number.isNaN(dateTimestamp) ? 0 : dateTimestamp;
+        const parsedId = Number.isNaN(Number(liftToScore.id)) ? 0 : Number(liftToScore.id);
+        return Math.max(parsedDate, parsedId);
+    };
+
+    const orderedLiftTitles = React.useMemo(() => {
+        const liftsArray = Object.values(allLifts);
+        const validTitles = liftsArray.filter(item => item?.title?.trim());
+        validTitles.sort((a, b) => getLiftSortKey(b) - getLiftSortKey(a));
+        const seen = new Set<string>();
+        const titles: string[] = [];
+        validTitles.forEach(item => {
+            const trimmed = item.title.trim();
+            const key = trimmed.toLowerCase();
+            if (trimmed && !seen.has(key)) {
+                seen.add(key);
+                titles.push(trimmed);
+            }
+        });
+        return titles;
+    }, [allLifts]);
+
+    const suggestionContext = React.useMemo<'title' | 'movement' | null>(() => {
+        if (entryMode !== 'single') {
+            return null;
+        }
+        if (editingTarget === 'set') {
+            return null;
+        }
+        if (editingTarget === 'title') {
+            return 'title';
+        }
+        if (lift.title === '') {
+            return 'title';
+        }
+        return 'movement';
+    }, [entryMode, editingTarget, lift.title]);
+
+    const titleSuggestions = React.useMemo(() => {
+        if (suggestionContext !== 'title') {
+            return [];
+        }
+        const query = firstInputValue.trim().toLowerCase();
+        const seen = new Set<string>();
+        const suggestions: string[] = [];
+
+        const fromHistory = query
+            ? orderedLiftTitles.filter(title => title.toLowerCase().startsWith(query))
+            : orderedLiftTitles;
+
+        fromHistory.some(title => {
+            const key = title.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                suggestions.push(title);
+            }
+            return suggestions.length === 3;
+        });
+
+        if (suggestions.length < 3) {
+            const fromDefaults = query
+                ? DEFAULT_LIFT_TITLES.filter(title => title.toLowerCase().startsWith(query))
+                : DEFAULT_LIFT_TITLES;
+
+            for (const title of fromDefaults) {
+                if (suggestions.length >= 3) {
+                    break;
+                }
+                const key = title.toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    suggestions.push(title);
+                }
+            }
+        }
+
+        return suggestions;
+    }, [suggestionContext, firstInputValue, orderedLiftTitles]);
+
+    const movementSuggestions = React.useMemo(() => {
+        if (suggestionContext !== 'movement') {
+            return [];
+        }
+
+        const query = firstInputValue.trim().toLowerCase();
+        const normalizedCurrentTitle = lift.title.trim().toLowerCase();
+
+        const candidateLifts = Object.values(allLifts)
+            .filter(item => item.id !== lift.id && item.title && item.title.trim().toLowerCase() === normalizedCurrentTitle)
+            .sort((a, b) => getLiftSortKey(b) - getLiftSortKey(a));
+
+        const referenceLift = candidateLifts[0];
+
+        const existingNames = new Set<string>();
+        lift.movements.forEach((movement) => {
+            if (movement.name.trim()) {
+                existingNames.add(movement.name.trim().toLowerCase());
+            }
+        });
+
+        const seen = new Set<string>();
+        const suggestions: string[] = [];
+
+        const addSuggestion = (name: string) => {
+            if (suggestions.length >= 3) {
+                return;
+            }
+            const trimmed = name.trim();
+            if (!trimmed) {
+                return;
+            }
+            const key = trimmed.toLowerCase();
+            if (existingNames.has(key)) {
+                return;
+            }
+            if (seen.has(key)) {
+                return;
+            }
+            if (query && !key.startsWith(query)) {
+                return;
+            }
+            seen.add(key);
+            suggestions.push(trimmed);
+        };
+
+        referenceLift?.movements.forEach(movement => addSuggestion(movement.name));
+
+        if (suggestions.length < 3) {
+            for (const name of DEFAULT_MOVEMENTS) {
+                if (suggestions.length >= 3) {
+                    break;
+                }
+                addSuggestion(name);
+            }
+        }
+
+        return suggestions;
+    }, [
+        suggestionContext,
+        firstInputValue,
+        allLifts,
+        lift.id,
+        lift.movements,
+        lift.title,
+        editingTarget,
+        editingMovementIndex,
+    ]);
+
+    const suggestionsForInput = React.useMemo(() => {
+        if (suggestionContext === 'title') {
+            return titleSuggestions;
+        }
+        if (suggestionContext === 'movement') {
+            return movementSuggestions;
+        }
+        return [];
+    }, [movementSuggestions, suggestionContext, titleSuggestions]);
+
+    const handleFirstValueChange = React.useCallback((value: string) => {
+        setFirstInputValue(value);
+    }, []);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
@@ -407,6 +598,7 @@ const LiftEditorScreen: React.FC = () => {
                         style={styles.scrollView}
                         contentContainerStyle={styles.scrollContent}
                         keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                         onLayout={handleScrollViewLayout}
                     >
                         <View style={styles.notebookBackground}>
@@ -484,6 +676,8 @@ const LiftEditorScreen: React.FC = () => {
                             }
                             secondPlaceholder="Enter reps..."
                             onKeyboardDismiss={handleKeyboardDismiss}
+                            suggestions={suggestionsForInput}
+                            onFirstValueChange={handleFirstValueChange}
                         />
                     )}
                 </View>
