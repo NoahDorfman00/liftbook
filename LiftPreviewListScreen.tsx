@@ -1,59 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-    Modal,
-    View,
-    StyleSheet,
-    useColorScheme,
-    Platform,
-    TouchableOpacity,
-    Text,
-    Dimensions,
-} from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import LiftPreviewList from './LiftPreviewList';
 import { LiftPreview, RootStackParamList } from './types';
-import { getDatabase, ref, set } from 'firebase/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LOCAL_STORAGE_KEYS, retrieveLifts } from './utils';
 
-const { height } = Dimensions.get('window');
-
 type LiftPreviewListScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftList'>;
-
-// Helper functions for date generation
-const generateMonths = () => {
-    return Array.from({ length: 12 }, (_, i) => {
-        const date = new Date(2000, i, 1);
-        return {
-            value: String(i),
-            label: date.toLocaleString('default', { month: 'long' })
-        };
-    });
-};
-
-const generateDays = (year: number, month: number) => {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, i) => ({
-        value: String(i + 1),
-        label: String(i + 1).padStart(2, '0')
-    }));
-};
-
-const generateYears = () => {
-    const currentYear = new Date().getFullYear();
-    return Array.from({ length: 10 }, (_, i) => ({
-        value: String(currentYear - i),
-        label: String(currentYear - i)
-    }));
-};
 
 const LiftPreviewListScreen: React.FC = () => {
     const navigation = useNavigation<LiftPreviewListScreenNavigationProp>();
-    const colorScheme = useColorScheme() || 'dark';
-    const isDark = colorScheme === 'dark';
 
     const [lifts, setLifts] = useState<LiftPreview[]>([]);
 
@@ -140,48 +98,6 @@ const LiftPreviewListScreen: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-    },
-    modalContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.75)',
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#333',
-        width: '100%',
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-    },
-    closeButton: {
-        padding: 8,
-    },
-    closeButtonText: {
-        fontSize: 16,
-    },
-    doneButton: {
-        padding: 8,
-    },
-    doneButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    pickerContainer: {
-        width: '80%',
-        borderRadius: 15,
-        overflow: 'hidden',
-        backgroundColor: 'transparent',
-    },
-    datePicker: {
-        height: 200,
     },
 });
 

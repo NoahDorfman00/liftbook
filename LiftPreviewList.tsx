@@ -5,10 +5,7 @@ import {
     StyleSheet,
     FlatList,
     TouchableOpacity,
-    useColorScheme,
     Animated,
-    Dimensions,
-    Button,
     Alert,
     Image,
 } from 'react-native';
@@ -35,8 +32,6 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     onDeleteLift,
     onCreateNewLift,
 }) => {
-    const colorScheme = useColorScheme() || 'dark';
-    const isDark = colorScheme === 'dark';
     const swipeableRefs = React.useRef<Map<string, Swipeable>>(new Map());
 
     const renderRightActions = (

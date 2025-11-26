@@ -3,7 +3,6 @@ import {
     View,
     ScrollView,
     StyleSheet,
-    useColorScheme,
     TouchableOpacity,
     Text,
     Alert,
@@ -61,8 +60,6 @@ const RuledLines = () => {
 const LiftEditorScreen: React.FC = () => {
     const navigation = useNavigation<LiftEditorScreenNavigationProp>();
     const route = useRoute<LiftEditorScreenRouteProp>();
-    const colorScheme = useColorScheme() || 'dark';
-    const isDark = colorScheme === 'dark';
     const [isLoading, setIsLoading] = useState(!!route.params?.liftId);
 
     const [lift, setLift] = useState<Lift>({
