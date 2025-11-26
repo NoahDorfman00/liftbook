@@ -274,7 +274,12 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         ({ nativeEvent }: { nativeEvent: { translationY: number } }) => {
             if (nativeEvent.translationY > 18 && !hasTriggeredDismissRef.current) {
                 hasTriggeredDismissRef.current = true;
-                userDismissedKeyboardRef.current = true;
+                // Treat this as an explicit "close and clear" gesture.
+                userDismissedKeyboardRef.current = false;
+                isProgrammaticUpdateRef.current = true;
+                setFirstValue('');
+                setSecondValue('');
+                onFirstValueChange?.('');
                 firstInputRef.current?.blur();
                 secondInputRef.current?.blur();
                 Keyboard.dismiss();
@@ -500,7 +505,7 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
     },
     suggestionText: {
-        fontSize: 16,
+        fontSize: 20,
         fontFamily: 'Schoolbell',
         color: '#333',
     },
