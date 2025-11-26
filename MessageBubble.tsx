@@ -42,6 +42,18 @@ interface MessageBubbleProps {
     onTitleLayout?: (layout: LayoutRectangle) => void;
     onSetLayout?: (setIndex: number, layout: LayoutRectangle) => void;
     onAddSetLayout?: (layout: LayoutRectangle) => void;
+    isTitleHighlighted?: boolean;
+    showTitlePlaceholder?: boolean;
+    titlePlaceholderText?: string;
+    isMovementNameHighlighted?: boolean;
+    showMovementPlaceholder?: boolean;
+    movementPlaceholderText?: string;
+    highlightedSetIndex?: number | null;
+    showSetPlaceholder?: boolean;
+    setPlaceholderText?: string;
+    prependEmptyLine?: boolean;
+    isMovementPendingDelete?: boolean;
+    pendingDeleteSetIndex?: number | null;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
@@ -59,18 +71,48 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     onTitleLayout,
     onSetLayout,
     onAddSetLayout,
+    isTitleHighlighted = false,
+    showTitlePlaceholder = false,
+    titlePlaceholderText = '',
+    isMovementNameHighlighted = false,
+    showMovementPlaceholder = false,
+    movementPlaceholderText = '',
+    highlightedSetIndex = null,
+    showSetPlaceholder = false,
+    setPlaceholderText = '',
+    prependEmptyLine = false,
+    isMovementPendingDelete = false,
+    pendingDeleteSetIndex = null,
 }) => {
     const pressableHitSlop = { top: 2, bottom: 2, left: 0, right: 0 }; // 28px container, 24px touch area
 
     if (type === 'title') {
+        const titleContent = (content as string) ?? '';
+        const isPlaceholderActive = showTitlePlaceholder && titleContent.trim().length === 0;
+        const displayTitle = isPlaceholderActive ? titlePlaceholderText : titleContent;
+
         return (
             <>
                 <View
                     style={styles.titleLineContainer}
                     onLayout={(event) => onTitleLayout?.(event.nativeEvent.layout)}
                 >
-                    <Pressable hitSlop={pressableHitSlop} onLongPress={onTitleLongPress} onPress={onTitlePress}>
-                        <Text style={styles.titleText}>{content as string}</Text>
+                    <Pressable
+                        hitSlop={pressableHitSlop}
+                        onPress={onTitlePress}
+                        onLongPress={onTitleLongPress}
+                    >
+                        {({ pressed }) => (
+                            <Text
+                                style={[
+                                    styles.titleText,
+                                    (isEditing || isTitleHighlighted || pressed) && styles.editingText,
+                                    isPlaceholderActive && styles.placeholderText,
+                                ]}
+                            >
+                                {displayTitle}
+                            </Text>
+                        )}
                     </Pressable>
                 </View>
                 {!isLast && <View style={styles.emptyLine} />}
@@ -79,13 +121,32 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
 
     const movement = content as Movement;
+    const movementName = movement?.name ?? '';
+    const isMovementPlaceholderActive = showMovementPlaceholder && movementName.trim().length === 0;
+    const displayMovementName = isMovementPlaceholderActive ? movementPlaceholderText : movementName;
+
     return (
         <>
-            <View style={styles.movementLineContainer}>
-                <Pressable hitSlop={pressableHitSlop} onLongPress={onMovementLongPress} onPress={onMovementPress}>
-                    <Text style={styles.movementText}>{movement.name}</Text>
-                </Pressable>
-            </View>
+            {prependEmptyLine && <View style={styles.emptyLine} />}
+            <Pressable
+                onPress={onMovementPress}
+                onLongPress={onMovementLongPress}
+                hitSlop={pressableHitSlop}
+            >
+                {({ pressed }) => (
+                    <View style={styles.movementLineContainer}>
+                        <Text
+                            style={[
+                                styles.movementText,
+                                (isMovementNameHighlighted || isMovementPendingDelete || pressed) && styles.editingText,
+                                isMovementPlaceholderActive && styles.placeholderText,
+                            ]}
+                        >
+                            {displayMovementName}
+                        </Text>
+                    </View>
+                )}
+            </Pressable>
             {movement.sets.map((set, idx) => (
                 <View
                     style={styles.lineContainer}
@@ -97,15 +158,39 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                         onLongPress={() => onSetLongPress && onSetLongPress(idx)}
                         onPress={() => onSetPress && onSetPress(idx)}
                     >
-                        <Text style={[styles.text, styles.setText]}>{set.weight} × {set.reps}</Text>
+                        {({ pressed }) => (
+                            <Text
+                                style={[
+                                    styles.text,
+                                    styles.setText,
+                                    (
+                                        highlightedSetIndex === idx ||
+                                        pendingDeleteSetIndex === idx ||
+                                        isMovementPendingDelete ||
+                                        pressed
+                                    ) && styles.editingText,
+                                ]}
+                            >
+                                {set.weight} × {set.reps}
+                            </Text>
+                        )}
                     </Pressable>
                 </View>
             ))}
             <Pressable onPress={onEmptyLinePress}>
                 <View
-                    style={styles.emptyLine}
+                    style={[
+                        styles.emptyLine,
+                        showSetPlaceholder && styles.placeholderLine,
+                    ]}
                     onLayout={(event) => onAddSetLayout?.(event.nativeEvent.layout)}
-                />
+                >
+                    {showSetPlaceholder && (
+                        <Text style={[styles.text, styles.setText, styles.placeholderText]}>
+                            {setPlaceholderText}
+                        </Text>
+                    )}
+                </View>
             </Pressable>
             {!isLast && <View style={styles.emptyLine} />}
         </>
@@ -155,6 +240,15 @@ const styles = StyleSheet.create({
     },
     setLineContainer: {
         // no negative margin here
+    },
+    editingText: {
+        color: '#6d6d6d',
+    },
+    placeholderText: {
+        color: '#9e9e9e',
+    },
+    placeholderLine: {
+        justifyContent: 'flex-end',
     },
 });
 

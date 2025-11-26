@@ -10,6 +10,7 @@ import {
     Dimensions,
     Button,
     Alert,
+    Image,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -66,8 +67,8 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                             'Delete lift?',
                             'This will permanently delete this lift.',
                             [
-                                { 
-                                    text: 'Cancel', 
+                                {
+                                    text: 'Cancel',
                                     style: 'cancel',
                                     onPress: () => closeSwipeable()
                                 },
@@ -133,12 +134,13 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     Lifts
                 </Text>
                 <TouchableOpacity
-                    style={[styles.newButton, { backgroundColor: '#e0e0e0' }]}
+                    style={styles.newButton}
                     onPress={onCreateNewLift}
                 >
-                    <Text style={[styles.newButtonText, { color: '#333' }]}>
-                        New Lift
-                    </Text>
+                    <Image
+                        source={require('./assets/plus.png')}
+                        style={styles.newButtonIcon}
+                    />
                 </TouchableOpacity>
             </View>
             <FlatList
@@ -157,7 +159,7 @@ const styles = StyleSheet.create({
     },
     header: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -169,16 +171,18 @@ const styles = StyleSheet.create({
         fontSize: 32,
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
+        textAlign: 'center',
     },
     newButton: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 16,
+        position: 'absolute',
+        right: 16,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
     },
-    newButtonText: {
-        fontSize: 20,
-        fontFamily: 'Schoolbell',
-        fontWeight: '500',
+    newButtonIcon: {
+        width: 28,
+        height: 28,
+        resizeMode: 'contain',
     },
     listContent: {
         paddingVertical: 0,

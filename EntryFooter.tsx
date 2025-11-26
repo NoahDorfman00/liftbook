@@ -67,6 +67,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const isProgrammaticUpdateRef = useRef(false);
     const userDismissedKeyboardRef = useRef(false);
     const hasTriggeredDismissRef = useRef(false);
+    const [activeField, setActiveField] = useState<'first' | 'second'>('first');
 
     const showWarningMessage = (message: string) => {
         setWarningMessage(message);
@@ -220,39 +221,42 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         };
     }, [onKeyboardDismiss, insets.bottom]);
 
-    const handleSubmit = () => {
+    const handleSubmit = (override?: { first?: string; second?: string }) => {
         const isWeightEntry = firstPlaceholder === 'Enter weight...';
 
+        const firstToUse = (override?.first ?? firstValue).trim();
+        const secondToUse = (override?.second ?? secondValue).trim();
+
         if (mode === 'single') {
-            if (!firstValue.trim()) {
+            if (!firstToUse) {
                 showWarningMessage(isWeightEntry ? 'Please enter a weight' : 'Please enter a value');
                 return;
             }
-            if (isWeightEntry && !isValidNumber(firstValue)) {
+            if (isWeightEntry && !isValidNumber(firstToUse)) {
                 showWarningMessage('Please enter a valid positive number for weight');
                 return;
             }
-            onSubmit({ first: firstValue.trim() });
+            onSubmit({ first: firstToUse });
             setFirstValue('');
             onFirstValueChange?.('');
         } else if (mode === 'double') {
-            if (!firstValue.trim()) {
+            if (!firstToUse) {
                 showWarningMessage('Please enter a weight');
                 return;
             }
-            if (!secondValue.trim()) {
+            if (!secondToUse) {
                 showWarningMessage('Please enter the number of reps');
                 return;
             }
-            if (!isValidNumber(firstValue)) {
+            if (!isValidNumber(firstToUse)) {
                 showWarningMessage('Please enter a valid positive number for weight');
                 return;
             }
-            if (!isValidNumber(secondValue)) {
+            if (!isValidNumber(secondToUse)) {
                 showWarningMessage('Please enter a valid positive number for reps');
                 return;
             }
-            onSubmit({ first: firstValue.trim(), second: secondValue.trim() });
+            onSubmit({ first: firstToUse, second: secondToUse });
             setFirstValue('');
             setSecondValue('');
             onFirstValueChange?.('');
@@ -342,6 +346,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             }
                         }}
                         onFocus={() => {
+                            setActiveField('first');
                             userDismissedKeyboardRef.current = false;
                             console.log('EntryFooter first input focus', {
                                 mode,
@@ -381,6 +386,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                 userDismissedKeyboardRef.current = false;
                             }}
                             onFocus={() => {
+                                setActiveField('second');
                                 userDismissedKeyboardRef.current = false;
                             }}
                             placeholder={secondPlaceholder}
@@ -396,26 +402,46 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         />
                     )}
                 </View>
-                {mode === 'single' && suggestions.length > 0 && (
-                    <View style={styles.suggestionsContainer}>
-                        {suggestions.map((suggestion) => (
-                            <TouchableOpacity
-                                key={suggestion}
-                                style={styles.suggestionPill}
-                                onPress={() => {
-                                    setFirstValue(suggestion);
-                                    onFirstValueChange?.(suggestion);
-                                    onSuggestionSelect?.(suggestion);
-                                    setTimeout(() => {
-                                        firstInputRef.current?.focus();
-                                    }, 0);
-                                }}
-                            >
-                                <Text style={styles.suggestionText}>{suggestion}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                )}
+                {(
+                    (mode === 'single' && suggestions.length > 0) ||
+                    (mode === 'double' &&
+                        suggestions.length > 0 &&
+                        firstPlaceholder === 'Enter weight...' &&
+                        activeField === 'first')
+                ) && (
+                        <View style={styles.suggestionsContainer}>
+                            {suggestions.slice(0, 3).map((suggestion) => (
+                                <View key={suggestion} style={styles.suggestionSlot}>
+                                    <TouchableOpacity
+                                        style={styles.suggestionTouchable}
+                                        onPress={() => {
+                                            onSuggestionSelect?.(suggestion);
+
+                                            // In single mode (titles/movements), selecting a suggestion should submit immediately.
+                                            if (mode === 'single') {
+                                                handleSubmit({ first: suggestion });
+                                                return;
+                                            }
+
+                                            // In double mode, suggestions are only shown for the weight field.
+                                            // Selecting a suggestion should fill the weight and move focus to reps,
+                                            // not submit the whole set.
+                                            if (mode === 'double') {
+                                                isProgrammaticUpdateRef.current = true;
+                                                setFirstValue(suggestion);
+                                                onFirstValueChange?.(suggestion);
+                                                setTimeout(() => {
+                                                    secondInputRef.current?.focus();
+                                                }, 0);
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.suggestionText}>{suggestion}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </View>
+                    )}
             </Animated.View>
         </PanGestureHandler>
     );
@@ -460,21 +486,22 @@ const styles = StyleSheet.create({
     },
     suggestionsContainer: {
         flexDirection: 'row',
-        paddingHorizontal: 16,
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 32,
         paddingBottom: 8,
-        gap: 8,
     },
-    suggestionPill: {
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: '#d0d0d0',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+    suggestionSlot: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    suggestionTouchable: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
     },
     suggestionText: {
-        fontSize: 14,
-        fontWeight: '500',
+        fontSize: 16,
+        fontFamily: 'Schoolbell',
         color: '#333',
     },
 });
