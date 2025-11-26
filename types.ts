@@ -24,5 +24,4 @@ export interface LiftPreview {
 export type RootStackParamList = {
     LiftList: undefined;
     LiftEditor: { liftId?: string; date?: string };
-    Charts: undefined;
 }; 
