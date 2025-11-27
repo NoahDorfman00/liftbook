@@ -67,6 +67,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const isProgrammaticUpdateRef = useRef(false);
     const userDismissedKeyboardRef = useRef(false);
     const hasTriggeredDismissRef = useRef(false);
+    const hasAutoFocusedForCurrentSetRef = useRef(false);
+    const previousSetKeyRef = useRef<string>('');
     const [activeField, setActiveField] = useState<'first' | 'second'>('first');
 
     const showWarningMessage = (message: string) => {
@@ -77,7 +79,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         }
         warningTimeout.current = setTimeout(() => {
             setShowWarning(false);
-        }, 3000);
+            warningTimeout.current = null;
+        }, 2500);
     };
 
     useEffect(() => {
@@ -89,11 +92,28 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             !initialValues?.first;
 
         const isInteractionMode = mode !== 'hidden';
+        
+        // When editing an existing set (both weight and reps provided), auto-focus weight initially
+        // but only once - don't re-focus if user manually focuses reps
+        const isEditingExistingSet = mode === 'double' && 
+            initialValues?.first != null && 
+            initialValues?.second != null;
+
+        // Reset auto-focus tracking when the set being edited changes
+        if (isEditingExistingSet) {
+            const currentSetKey = `${initialValues?.first}-${initialValues?.second}`;
+            if (previousSetKeyRef.current !== currentSetKey) {
+                hasAutoFocusedForCurrentSetRef.current = false;
+                previousSetKeyRef.current = currentSetKey;
+            }
+        } else {
+            hasAutoFocusedForCurrentSetRef.current = false;
+        }
 
         const shouldAutoFocus =
-            mode === 'double' ||
+            (mode === 'double' && (!isEditingExistingSet || !hasAutoFocusedForCurrentSetRef.current)) ||
             isNewLift ||
-            (initialValues != null && isInteractionMode);
+            (initialValues != null && isInteractionMode && !isEditingExistingSet);
 
         if (shouldAutoFocus) {
             if (userDismissedKeyboardRef.current) {
@@ -103,6 +123,9 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             }
             setTimeout(() => {
                 firstInputRef.current?.focus();
+                if (isEditingExistingSet) {
+                    hasAutoFocusedForCurrentSetRef.current = true;
+                }
             }, 100);
         }
     }, [mode, firstPlaceholder, initialValues]);
@@ -280,6 +303,12 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 setFirstValue('');
                 setSecondValue('');
                 onFirstValueChange?.('');
+                // Clear warning when swiping away
+                if (warningTimeout.current) {
+                    clearTimeout(warningTimeout.current);
+                    warningTimeout.current = null;
+                }
+                setShowWarning(false);
                 firstInputRef.current?.blur();
                 secondInputRef.current?.blur();
                 Keyboard.dismiss();
@@ -348,6 +377,13 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             if (!isProgrammatic) {
                                 userDismissedKeyboardRef.current = false;
                                 onFirstValueChange?.(text);
+                                // Clear warning when user starts typing
+                                if (showWarning) {
+                                    if (warningTimeout.current) {
+                                        clearTimeout(warningTimeout.current);
+                                    }
+                                    setShowWarning(false);
+                                }
                             }
                         }}
                         onFocus={() => {
@@ -389,6 +425,13 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                 isProgrammaticUpdateRef.current = false;
                                 setSecondValue(text);
                                 userDismissedKeyboardRef.current = false;
+                                // Clear warning when user starts typing
+                                if (showWarning) {
+                                    if (warningTimeout.current) {
+                                        clearTimeout(warningTimeout.current);
+                                    }
+                                    setShowWarning(false);
+                                }
                             }}
                             onFocus={() => {
                                 setActiveField('second');
