@@ -296,6 +296,8 @@
 				DEVELOPMENT_TEAM = YDC838ZVZ8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = liftbook/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = liftbook;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -307,7 +309,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.noahdorfman.--PRODUCT-NAME-rfc1034identifier-";
+				PRODUCT_BUNDLE_IDENTIFIER = com.noahdorfman.liftbook;
 				PRODUCT_NAME = liftbook;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -325,6 +327,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YDC838ZVZ8;
 				INFOPLIST_FILE = liftbook/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = liftbook;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -336,7 +340,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.noahdorfman.--PRODUCT-NAME-rfc1034identifier-";
+				PRODUCT_BUNDLE_IDENTIFIER = com.noahdorfman.liftbook;
 				PRODUCT_NAME = liftbook;
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
