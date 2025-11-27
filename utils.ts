@@ -85,8 +85,15 @@ export const saveMovementLocally = async (name: string, dates: string[]) => {
     }
 };
 
-// Sync local data with database
-export const syncToDatabase = async (force: boolean = false) => {
+// Sync local data with database for a specific user.
+// NOTE: This is future-facing; until you have auth wired up and pass a real userId,
+// this function should not be called.
+export const syncToDatabase = async (userId: string | null | undefined, force: boolean = false) => {
+    if (!userId) {
+        console.log('syncToDatabase skipped: no userId');
+        return;
+    }
+
     try {
         const lastSync = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LAST_SYNC);
         const lastSyncTime = lastSync ? parseInt(lastSync) : 0;
@@ -100,17 +107,18 @@ export const syncToDatabase = async (force: boolean = false) => {
 
         const localData = await getLocalData();
         const db = getDatabase();
+        const userRef = (path: string) => ref(db, `users/${userId}/${path}`);
 
         // Sync lifts
         if (Object.keys(localData.lifts).length > 0) {
-            await set(ref(db, 'lifts'), localData.lifts);
-            console.log('Synced lifts with database');
+            await set(userRef('lifts'), localData.lifts);
+            console.log('Synced lifts with database for user:', userId);
         }
 
         // Sync movements
         if (Object.keys(localData.movements).length > 0) {
-            await set(ref(db, 'movements'), localData.movements);
-            console.log('Synced movements with database');
+            await set(userRef('movements'), localData.movements);
+            console.log('Synced movements with database for user:', userId);
         }
 
         // Update last sync time
@@ -120,22 +128,31 @@ export const syncToDatabase = async (force: boolean = false) => {
     }
 };
 
-// Sync database data to local storage
-export const syncFromDatabase = async () => {
+// Sync database data to local storage for a specific user.
+// NOTE: This is future-facing; until you have auth wired up and pass a real userId,
+// this function should not be called.
+export const syncFromDatabase = async (userId: string | null | undefined) => {
+    if (!userId) {
+        console.log('syncFromDatabase skipped: no userId');
+        return;
+    }
+
     try {
         const db = getDatabase();
-        const liftsSnapshot = await get(ref(db, 'lifts'));
+        const userRef = (path: string) => ref(db, `users/${userId}/${path}`);
+
+        const liftsSnapshot = await get(userRef('lifts'));
         if (liftsSnapshot.exists()) {
             const lifts = liftsSnapshot.val();
             await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(lifts));
-            console.log('Synced lifts from database');
+            console.log('Synced lifts from database for user:', userId);
         }
 
-        const movementsSnapshot = await get(ref(db, 'movements'));
+        const movementsSnapshot = await get(userRef('movements'));
         if (movementsSnapshot.exists()) {
             const movements = movementsSnapshot.val();
             await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.MOVEMENTS, JSON.stringify(movements));
-            console.log('Synced movements from database');
+            console.log('Synced movements from database for user:', userId);
         }
     } catch (error) {
         console.error('Error syncing from database:', error);

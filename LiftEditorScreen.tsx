@@ -610,14 +610,30 @@ const LiftEditorScreen: React.FC = () => {
     };
 
     const handleDateChange = (_: any, date?: Date) => {
-        if (date) {
-            setSelectedDate(date);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const dateString = `${year}-${month}-${day}`;
-            setLift(prev => ({ ...prev, date: dateString }));
+        if (!date) {
+            return;
         }
+
+        setSelectedDate(date);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateString = `${year}-${month}-${day}`;
+
+        console.log('LiftEditor handleDateChange', {
+            previousDate: lift.date,
+            newDate: dateString,
+            hasLiftId: !!route.params?.liftId,
+        });
+
+        // Update local state and persist so the list screen sees the new date
+        const updatedLift: Lift = {
+            ...lift,
+            date: dateString,
+        };
+
+        setLift(updatedLift);
+        saveLift(updatedLift);
     };
 
     const handleScrollViewLayout = (event: any) => {

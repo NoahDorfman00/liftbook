@@ -8,6 +8,7 @@ import {
     Animated,
     Alert,
     Image,
+    Dimensions,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -25,6 +26,11 @@ interface LiftPreviewListProps {
 }
 
 const ACTION_WIDTH = 80;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const PLUS_ICON_WIDTH = 28;
+const PLUS_BUTTON_HORIZONTAL_PADDING = 8;
+const PLUS_EFFECTIVE_WIDTH = PLUS_ICON_WIDTH + PLUS_BUTTON_HORIZONTAL_PADDING * 2;
+const ARROW_RIGHT_MARGIN = PLUS_EFFECTIVE_WIDTH / 2; // center of the plus button
 
 const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     lifts,
@@ -122,6 +128,8 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
         );
     };
 
+    const hasLifts = lifts.length > 0;
+
     return (
         <View style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
             <View style={styles.header}>
@@ -138,12 +146,25 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     />
                 </TouchableOpacity>
             </View>
-            <FlatList
-                data={lifts}
-                renderItem={renderItem}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-            />
+
+            {hasLifts ? (
+                <FlatList
+                    data={lifts}
+                    renderItem={renderItem}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.listContent}
+                />
+            ) : (
+                <View style={styles.emptyStateContainer}>
+                    <Image
+                        source={require('./assets/start-here.png')}
+                        style={styles.emptyStateImage}
+                    />
+                    <Text style={[styles.emptyStateText, { color: '#333' }]}>
+                        log your first lift
+                    </Text>
+                </View>
+            )}
         </View>
     );
 };
@@ -213,6 +234,28 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontFamily: 'Schoolbell',
         padding: 20,
+    },
+    emptyStateContainer: {
+        flex: 1,
+        backgroundColor: '#fff',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        alignItems: 'stretch',
+    },
+    emptyStateImage: {
+        width: SCREEN_WIDTH / 2 - ARROW_RIGHT_MARGIN,
+        height: 180,
+        resizeMode: 'contain',
+        marginBottom: 4,
+        alignSelf: 'flex-end',
+        marginRight: ARROW_RIGHT_MARGIN,
+    },
+    emptyStateText: {
+        fontSize: 24,
+        fontFamily: 'Schoolbell',
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginTop: 0,
     },
 });
 

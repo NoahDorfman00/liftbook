@@ -44,6 +44,12 @@ const initFirebase = () => {
   }
 };
 
+// TODO: Replace this with real auth once implemented.
+// For now, we always behave as logged-out so no Firebase sync occurs.
+const getCurrentUserId = (): string | null => {
+  return null;
+};
+
 const initApp = async () => {
   console.log('Starting app initialization...');
   try {
@@ -58,8 +64,11 @@ const initApp = async () => {
       console.log('Checking local storage for lifts data...');
       const liftsData = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
       console.log('Lifts data from storage:', liftsData);
-      if (!liftsData) {
-        await syncFromDatabase();
+      const userId = getCurrentUserId();
+      if (!liftsData && userId) {
+        await syncFromDatabase(userId);
+      } else if (!liftsData) {
+        console.log('Skipping remote sync: no user is logged in yet.');
       }
     } catch (storageError) {
       console.error('AsyncStorage error:', storageError);
