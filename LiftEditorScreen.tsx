@@ -1055,12 +1055,6 @@ const LiftEditorScreen: React.FC = () => {
             });
         }
 
-        const previousLiftInfo = previousLift !== null
-            ? `liftId=${previousLift.id}, date=${previousLift.date}, sortKey=${previousLiftSortKey} (current lift sortKey: ${currentLiftSortKey})`
-            : `none found (current lift sortKey: ${currentLiftSortKey})`;
-        console.log('[Weight Suggestions] Using previous lift:', previousLiftInfo);
-        console.log('[Weight Suggestions] Collected weights from previous lift only');
-
         if (weightedSets.length === 0) {
             return [];
         }
@@ -1068,9 +1062,6 @@ const LiftEditorScreen: React.FC = () => {
         // Find the tightest cluster of weights (working sets that are close together).
         // This excludes warmups, drop sets, and max attempts that are far from the main cluster.
         const byWeight = [...weightedSets].sort((a, b) => a.weight - b.weight);
-
-        console.log('[Weight Suggestions] Input weights (with sortKeys):', weightedSets.map(w => `${w.weight} (sortKey: ${w.sortKey})`).join(', '));
-        console.log('[Weight Suggestions] Sorted by weight:', byWeight.map(w => w.weight).join(', '));
 
         if (byWeight.length === 0) {
             return [];
@@ -1081,7 +1072,6 @@ const LiftEditorScreen: React.FC = () => {
         let bestCluster: typeof byWeight = [];
         let bestRange = Infinity;
 
-        console.log('[Weight Suggestions] Testing clusters:');
         // Try all possible starting points
         for (let start = 0; start < byWeight.length; start++) {
             // Try clusters of size 2, 3, 4, etc. starting from this point
@@ -1092,24 +1082,18 @@ const LiftEditorScreen: React.FC = () => {
                 const range = cluster[cluster.length - 1].weight - cluster[0].weight;
                 const rangePerItem = range / cluster.length; // Normalize by cluster size
 
-                const clusterWeights = cluster.map(w => w.weight).join(', ');
-                console.log(`  Cluster [${clusterWeights}]: range=${range.toFixed(2)}, rangePerItem=${rangePerItem.toFixed(2)}`);
-
                 // Prefer tighter clusters (smaller range per item), but if ranges are similar,
                 // prefer larger clusters (more values)
                 if (rangePerItem < bestRange ||
                     (Math.abs(rangePerItem - bestRange) < 0.1 && cluster.length > bestCluster.length)) {
                     bestRange = rangePerItem;
                     bestCluster = cluster;
-                    console.log(`    -> New best cluster! rangePerItem=${rangePerItem.toFixed(2)}`);
                 }
             }
         }
 
         // If we found a cluster, use it; otherwise use all weights
         const workingWeights = bestCluster.length >= 2 ? bestCluster : byWeight;
-
-        console.log('[Weight Suggestions] Best cluster:', workingWeights.map(w => w.weight).join(', '));
 
         // Calculate bounds based on the cluster's range
         const clusterMin = workingWeights[0].weight;
@@ -1121,13 +1105,9 @@ const LiftEditorScreen: React.FC = () => {
         const minAllowed = clusterMin - buffer;
         const maxAllowed = clusterMax + buffer;
 
-        console.log(`[Weight Suggestions] Bounds: min=${minAllowed.toFixed(2)}, max=${maxAllowed.toFixed(2)} (cluster: ${clusterMin.toFixed(2)}-${clusterMax.toFixed(2)}, buffer=${buffer.toFixed(2)})`);
-
         const filtered = weightedSets.filter(
             (item) => item.weight >= minAllowed && item.weight <= maxAllowed
         );
-
-        console.log('[Weight Suggestions] Filtered weights:', filtered.map(w => `${w.weight} (sortKey: ${w.sortKey})`).join(', '));
 
         // Only use filtered weights - don't fall back to all weights if filtered is empty
         if (filtered.length === 0) {
@@ -1138,11 +1118,7 @@ const LiftEditorScreen: React.FC = () => {
             (a, b) => b.sortKey - a.sortKey
         );
 
-        console.log('[Weight Suggestions] Sorted candidates (by sortKey, descending):', candidates.map(w => `${w.weight} (sortKey: ${w.sortKey})`).join(', '));
-
         const best = candidates[0];
-        console.log('[Weight Suggestions] Final suggestion:', best ? best.weight.toString() : 'none');
-
         return best ? [best.weight.toString()] : [];
     }, [allLifts, editingMovementIndex, lift.movements, suggestionContext]);
 
