@@ -48,12 +48,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     forceFocus = false,
     shouldAutoFocusOnLoad = false,
 }) => {
-    console.log('EntryFooter render:', {
-        mode,
-        firstPlaceholder,
-        hasInitialValues: !!initialValues
-    });
-
     const insets = useSafeAreaInsets();
     const [firstValue, setFirstValue] = useState(initialValues?.first || '');
     const [secondValue, setSecondValue] = useState(initialValues?.second || '');
@@ -133,7 +127,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
 
         if (shouldAutoFocus) {
             if (userDismissedKeyboardRef.current) {
-                console.log('EntryFooter skip auto-focus after user dismissal');
                 userDismissedKeyboardRef.current = false;
                 return;
             }
@@ -164,16 +157,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         const hasFirstChanged = previousInitial?.first !== incomingFirst;
         const hasSecondChanged = previousInitial?.second !== incomingSecond;
 
-        console.log('EntryFooter initialValues effect fired:', {
-            previousFirst: previousInitial?.first,
-            incomingFirst,
-            previousSecond: previousInitial?.second,
-            incomingSecond,
-            initialProvided,
-            hasFirstChanged,
-            hasSecondChanged,
-        });
-
         previousInitialValuesRef.current = {
             first: incomingFirst,
             second: incomingSecond,
@@ -181,7 +164,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
 
         if (!initialProvided) {
             if (previousInitial?.first !== undefined || previousInitial?.second !== undefined) {
-                console.log('EntryFooter clearing values: initialValues removed');
                 isProgrammaticUpdateRef.current = true;
                 setFirstValue('');
                 setSecondValue('');
@@ -191,14 +173,12 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         }
 
         if (hasFirstChanged && incomingFirst !== undefined) {
-            console.log('EntryFooter updating first value from initialValues');
             isProgrammaticUpdateRef.current = true;
             setFirstValue(incomingFirst);
             onFirstValueChange?.(incomingFirst);
         }
 
         if (hasSecondChanged && incomingSecond !== undefined) {
-            console.log('EntryFooter updating second value from initialValues');
             setSecondValue(incomingSecond);
         }
     }, [initialValues, onFirstValueChange]);
@@ -242,10 +222,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                     useNativeDriver: false,
                 }).start();
             }
-
-            console.log('Keyboard hidden event', {
-                dismissedByUser: userDismissedKeyboardRef.current,
-            });
 
             if (!isSubmitting.current && onKeyboardDismiss) {
                 onKeyboardDismiss();
@@ -414,11 +390,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         onFocus={() => {
                             setActiveField('first');
                             userDismissedKeyboardRef.current = false;
-                            console.log('EntryFooter first input focus', {
-                                mode,
-                                firstPlaceholder,
-                                hasInitialValues: !!initialValues,
-                            });
                             onFirstFieldFocus?.();
                         }}
                         placeholder={firstPlaceholder}

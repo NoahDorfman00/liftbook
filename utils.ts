@@ -51,7 +51,6 @@ export const saveLiftLocally = async (lift: Lift) => {
         localData.lifts[lift.id] = lift;
         localData.lastModified = Date.now();
         await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(localData.lifts));
-        console.log(`Saved lift locally with ID: ${lift.id}`);
     } catch (error) {
         console.error('Error saving lift locally:', error);
     }
@@ -65,7 +64,6 @@ export const deleteLiftLocally = async (liftId: string) => {
             delete localData.lifts[liftId];
             localData.lastModified = Date.now();
             await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(localData.lifts));
-            console.log(`Deleted lift locally with ID: ${liftId}`);
         }
     } catch (error) {
         console.error('Error deleting lift locally:', error);
@@ -79,7 +77,6 @@ export const saveMovementLocally = async (name: string, dates: string[]) => {
         localData.movements[name] = dates;
         localData.lastModified = Date.now();
         await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.MOVEMENTS, JSON.stringify(localData.movements));
-        console.log(`Saved movement locally: ${name}`);
     } catch (error) {
         console.error('Error saving movement locally:', error);
     }
@@ -90,7 +87,6 @@ export const saveMovementLocally = async (name: string, dates: string[]) => {
 // this function should not be called.
 export const syncToDatabase = async (userId: string | null | undefined, force: boolean = false) => {
     if (!userId) {
-        console.log('syncToDatabase skipped: no userId');
         return;
     }
 
@@ -101,7 +97,6 @@ export const syncToDatabase = async (userId: string | null | undefined, force: b
 
         // Only sync if it's been more than 5 minutes or force sync is requested
         if (!force && currentTime - lastSyncTime < 5 * 60 * 1000) {
-            console.log('Skipping sync - too soon since last sync');
             return;
         }
 
@@ -112,13 +107,11 @@ export const syncToDatabase = async (userId: string | null | undefined, force: b
         // Sync lifts
         if (Object.keys(localData.lifts).length > 0) {
             await set(userRef('lifts'), localData.lifts);
-            console.log('Synced lifts with database for user:', userId);
         }
 
         // Sync movements
         if (Object.keys(localData.movements).length > 0) {
             await set(userRef('movements'), localData.movements);
-            console.log('Synced movements with database for user:', userId);
         }
 
         // Update last sync time
@@ -133,7 +126,6 @@ export const syncToDatabase = async (userId: string | null | undefined, force: b
 // this function should not be called.
 export const syncFromDatabase = async (userId: string | null | undefined) => {
     if (!userId) {
-        console.log('syncFromDatabase skipped: no userId');
         return;
     }
 
@@ -145,14 +137,12 @@ export const syncFromDatabase = async (userId: string | null | undefined) => {
         if (liftsSnapshot.exists()) {
             const lifts = liftsSnapshot.val();
             await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(lifts));
-            console.log('Synced lifts from database for user:', userId);
         }
 
         const movementsSnapshot = await get(userRef('movements'));
         if (movementsSnapshot.exists()) {
             const movements = movementsSnapshot.val();
             await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.MOVEMENTS, JSON.stringify(movements));
-            console.log('Synced movements from database for user:', userId);
         }
     } catch (error) {
         console.error('Error syncing from database:', error);

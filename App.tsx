@@ -34,9 +34,7 @@ const firebaseConfig = {
 // Move Firebase initialization inside a try-catch
 const initFirebase = () => {
   try {
-    console.log('Initializing Firebase...');
     const app = initializeApp(firebaseConfig);
-    console.log('Firebase initialized successfully');
     return app;
   } catch (error) {
     console.error('Firebase initialization failed:', error);
@@ -51,7 +49,6 @@ const getCurrentUserId = (): string | null => {
 };
 
 const initApp = async () => {
-  console.log('Starting app initialization...');
   try {
     // Initialize Firebase first
     const firebaseApp = initFirebase();
@@ -61,14 +58,10 @@ const initApp = async () => {
 
     // Initialize AsyncStorage
     try {
-      console.log('Checking local storage for lifts data...');
       const liftsData = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
-      console.log('Lifts data from storage:', liftsData);
       const userId = getCurrentUserId();
       if (!liftsData && userId) {
         await syncFromDatabase(userId);
-      } else if (!liftsData) {
-        console.log('Skipping remote sync: no user is logged in yet.');
       }
     } catch (storageError) {
       console.error('AsyncStorage error:', storageError);
@@ -81,7 +74,6 @@ const initApp = async () => {
     const day = String(currentDate.getDate()).padStart(2, '0');
     const dateInCurrentTimezone = `${year}-${month}-${day}`;
     global.selectedDate = dateInCurrentTimezone;
-    console.log('Initial date set to:', dateInCurrentTimezone);
 
     return true;
   } catch (error) {

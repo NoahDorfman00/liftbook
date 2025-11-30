@@ -23,16 +23,12 @@ const LiftPreviewListScreen: React.FC = () => {
 
     const loadLifts = async () => {
         try {
-            console.log('Loading lifts...');
             const liftsData = await retrieveLifts();
-            console.log('Retrieved lifts data:', JSON.stringify(liftsData, null, 2));
 
             if (liftsData && typeof liftsData === 'object') {
                 const formattedLifts = Object.entries(liftsData)
                     .map(([id, data]: [string, any]) => {
-                        console.log('Processing lift:', id, data);
                         if (!data) {
-                            console.log('Invalid lift data for id:', id);
                             return null;
                         }
                         return {
@@ -57,10 +53,8 @@ const LiftPreviewListScreen: React.FC = () => {
                         return dateCompare;
                     });
 
-                console.log('Formatted lifts:', JSON.stringify(formattedLifts, null, 2));
                 setLifts(formattedLifts);
             } else {
-                console.log('No lifts data found or invalid format');
                 setLifts([]);
             }
         } catch (error) {

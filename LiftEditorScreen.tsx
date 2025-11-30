@@ -121,30 +121,15 @@ const LiftEditorScreen: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        console.log('EntryMode changed:', {
-            mode: entryMode,
-            hasLiftId: !!route.params?.liftId,
-            title: lift.title,
-            editingMovementIndex,
-            editingSetIndex,
-            editingTarget
-        });
+        // EntryMode tracking removed - not needed for production
     }, [entryMode, route.params?.liftId, lift.title, editingMovementIndex, editingSetIndex, editingTarget]);
 
     useEffect(() => {
-        console.log('LiftEditor mount effect:', {
-            hasLiftId: !!route.params?.liftId,
-            liftId: route.params?.liftId,
-            currentTitle: lift.title,
-            initialEntryMode: entryMode
-        });
-
         if (route.params?.liftId) {
             // Load existing lift data
             loadLift(route.params.liftId);
         } else {
             // New lift - focus the title input
-            console.log('Setting up new lift state');
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
@@ -158,11 +143,6 @@ const LiftEditorScreen: React.FC = () => {
         const keyboardWillShow = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
             (e) => {
-                console.log('LiftEditor - Keyboard showing:', {
-                    keyboardHeight: e.endCoordinates.height,
-                    screenHeight: e.endCoordinates.screenY,
-                    timestamp: Date.now()
-                });
                 setKeyboardHeight(e.endCoordinates.height);
             }
         );
@@ -170,7 +150,6 @@ const LiftEditorScreen: React.FC = () => {
         const keyboardWillHide = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
             () => {
-                console.log('LiftEditor - Keyboard hiding, timestamp:', Date.now());
                 setKeyboardHeight(0);
             }
         );
@@ -189,7 +168,6 @@ const LiftEditorScreen: React.FC = () => {
 
     const scrollToActiveEditingTarget = React.useCallback(() => {
         if (!scrollViewRef.current) {
-            console.log('scrollToActiveEditingTarget skipped: no scrollViewRef');
             return false;
         }
 
@@ -223,31 +201,11 @@ const LiftEditorScreen: React.FC = () => {
         }
 
         if (targetY == null) {
-            console.log('scrollToActiveEditingTarget no target', {
-                editingTarget,
-                editingMovementIndex,
-                editingSetIndex,
-                hasTitleLayout: !!titleLayoutRef.current,
-                hasMovementLayout: editingMovementIndex != null ? !!movementLayoutsRef.current[editingMovementIndex] : null,
-                hasSetLayout: editingMovementIndex != null && editingSetIndex != null
-                    ? !!setLayoutsRef.current[`${editingMovementIndex}-${editingSetIndex}`]
-                    : null,
-                hasAddSetLayout: editingMovementIndex != null ? !!addSetLayoutsRef.current[editingMovementIndex] : null,
-            });
             return false;
         }
 
         const SCROLL_MARGIN = 128;
         const scrollY = Math.max(0, targetY - SCROLL_MARGIN);
-        console.log('scrollToActiveEditingTarget scrolling', {
-            editingTarget,
-            editingMovementIndex,
-            editingSetIndex,
-            targetY,
-            scrollY,
-            keyboardHeight,
-            footerBottomPadding: contentBottomPadding,
-        });
         scrollViewRef.current.scrollTo({ y: scrollY, animated: true });
         return true;
     }, [
@@ -265,13 +223,6 @@ const LiftEditorScreen: React.FC = () => {
         }
 
         const success = scrollToActiveEditingTarget();
-        console.log('attemptScrollToActiveTarget result', {
-            success,
-            editingTarget,
-            editingMovementIndex,
-            editingSetIndex,
-            keyboardHeight,
-        });
 
         if (!success) {
             const retryScroll = () => {
@@ -397,7 +348,6 @@ const LiftEditorScreen: React.FC = () => {
 
     const loadLift = async (liftId: string) => {
         try {
-            console.log('Loading existing lift:', liftId);
             const liftData = await retrieveLift(liftId);
 
             if (!liftData) {
@@ -419,7 +369,6 @@ const LiftEditorScreen: React.FC = () => {
                 })())
             };
 
-            console.log('Setting lift data with date:', updatedLiftData.date);
             setLift(updatedLiftData);
 
             // Determine auto-focus behavior based on lift state
@@ -489,7 +438,6 @@ const LiftEditorScreen: React.FC = () => {
 
             // Save locally using the existing utility function
             await saveLiftLocally(liftWithDate);
-            console.log('Lift saved successfully:', liftWithDate);
             setAllLifts(prev => ({ ...prev, [liftWithDate.id]: liftWithDate }));
         } catch (error) {
             console.error('Error saving lift:', error);
@@ -653,7 +601,6 @@ const LiftEditorScreen: React.FC = () => {
     };
 
     const handleKeyboardDismiss = () => {
-        console.log('Handling keyboard dismiss');
         // Only reset states if we're not actively editing
         if (!isSubmitting.current) {
             setEntryMode('single');
@@ -702,12 +649,6 @@ const LiftEditorScreen: React.FC = () => {
         const day = String(date.getDate()).padStart(2, '0');
         const dateString = `${year}-${month}-${day}`;
 
-        console.log('LiftEditor handleDateChange', {
-            previousDate: lift.date,
-            newDate: dateString,
-            hasLiftId: !!route.params?.liftId,
-        });
-
         // Update local state and persist so the list screen sees the new date
         const updatedLift: Lift = {
             ...lift,
@@ -719,10 +660,7 @@ const LiftEditorScreen: React.FC = () => {
     };
 
     const handleScrollViewLayout = (event: any) => {
-        console.log('ScrollView layout:', {
-            height: event.nativeEvent.layout.height,
-            y: event.nativeEvent.layout.y
-        });
+        // Layout tracking removed - not needed for production
     };
 
     const getLiftSortKey = (liftToScore: Lift) => {
@@ -1025,15 +963,6 @@ const LiftEditorScreen: React.FC = () => {
             (a, b) => b.sortKey - a.sortKey
         );
 
-        console.log('Weight suggestions debug', {
-            movementName,
-            allWeights: weightedSets.map(w => w.weight),
-            median,
-            band: { minAllowed, maxAllowed },
-            filteredWeights: filtered.map(w => w.weight),
-            candidateWeights: candidates.map(w => w.weight),
-        });
-
         const best = candidates[0];
         return best ? [best.weight.toString()] : [];
     }, [allLifts, editingMovementIndex, lift.movements, suggestionContext]);
@@ -1084,14 +1013,6 @@ const LiftEditorScreen: React.FC = () => {
     }, []);
 
     const handleEntryFooterFocus = React.useCallback(() => {
-        console.log('LiftEditor handleEntryFooterFocus', {
-            editingTarget,
-            editingMovementIndex,
-            editingSetIndex,
-            entryMode,
-            keyboardHeight,
-        });
-
         // If user focuses on movement entry field, show the empty movement bubble
         // Check if we should be entering a movement name (when title exists and no movement is being added)
         const shouldShowMovementBubble =
@@ -1110,7 +1031,6 @@ const LiftEditorScreen: React.FC = () => {
         if (editingTarget === 'none') {
             // User is likely adding a brand new movement/set; ensure bottom content clears the footer.
             setTimeout(() => {
-                console.log('LiftEditor handleEntryFooterFocus -> scrollToEnd fallback');
                 scrollToEnd();
             }, 50);
         } else {
