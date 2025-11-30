@@ -91,6 +91,7 @@ const LiftEditorScreen: React.FC = () => {
     const [shouldAutoFocusOnLoad, setShouldAutoFocusOnLoad] = useState(false);
     const [shouldFocusSetAfterMovementSubmit, setShouldFocusSetAfterMovementSubmit] = useState(false);
     const [shouldFocusSetOnEmptyLineClick, setShouldFocusSetOnEmptyLineClick] = useState(false);
+    const [shouldFocusOnEdit, setShouldFocusOnEdit] = useState(false);
 
     const scrollViewRef = useRef<ScrollView>(null);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -345,6 +346,16 @@ const LiftEditorScreen: React.FC = () => {
             return () => clearTimeout(timeout);
         }
     }, [shouldFocusSetOnEmptyLineClick]);
+
+    // Reset shouldFocusOnEdit after it's been used
+    useEffect(() => {
+        if (shouldFocusOnEdit) {
+            const timeout = setTimeout(() => {
+                setShouldFocusOnEdit(false);
+            }, 300);
+            return () => clearTimeout(timeout);
+        }
+    }, [shouldFocusOnEdit]);
 
     const loadLift = async (liftId: string) => {
         try {
@@ -1050,9 +1061,11 @@ const LiftEditorScreen: React.FC = () => {
 
     const handleEntryFooterFocus = React.useCallback(() => {
         // If user focuses on movement entry field, show the empty movement bubble
-        // Check if we should be entering a movement name (when title exists and no movement is being added)
+        // Only show new movement bubble when adding a new movement, not when editing an existing one
+        const isEditingExistingMovement = editingMovementIndex !== null && editingMovementIndex >= 0;
         const shouldShowMovementBubble =
             lift.title.trim().length > 0 &&
+            !isEditingExistingMovement &&
             (editingTarget === 'none' || (editingTarget === 'movementName' && !isAddingNewMovement));
 
         if (shouldShowMovementBubble && !isAddingNewMovement) {
@@ -1142,6 +1155,7 @@ const LiftEditorScreen: React.FC = () => {
                                             setEditingSetIndex(null);
                                             setEditingTarget('title');
                                             setIsAddingNewMovement(false);
+                                            setShouldFocusOnEdit(true);
                                         }}
                                         isLast={lift.movements.length === 0}
                                         isTitleHighlighted={editingTarget === 'title'}
@@ -1172,6 +1186,7 @@ const LiftEditorScreen: React.FC = () => {
                                                 setEditingSetIndex(null);
                                                 setEditingTarget('movementName');
                                                 setEntryMode('single');
+                                                setShouldFocusOnEdit(true);
                                             }}
                                             onMovementLongPress={() => handleMovementLongPress(index)}
                                             onSetPress={(setIdx) => {
@@ -1180,6 +1195,7 @@ const LiftEditorScreen: React.FC = () => {
                                                 setEditingSetIndex(setIdx);
                                                 setEditingTarget('set');
                                                 setEntryMode('double');
+                                                setShouldFocusOnEdit(true);
                                             }}
                                             onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
                                             onEmptyLinePress={() => {
@@ -1324,7 +1340,8 @@ const LiftEditorScreen: React.FC = () => {
                                 forceFocus={
                                     (isAddingNewMovement && editingTarget === 'movementName' && !shouldAutoFocusOnLoad) ||
                                     shouldFocusSetAfterMovementSubmit ||
-                                    shouldFocusSetOnEmptyLineClick
+                                    shouldFocusSetOnEmptyLineClick ||
+                                    shouldFocusOnEdit
                                 }
                                 shouldAutoFocusOnLoad={shouldAutoFocusOnLoad}
                             />
