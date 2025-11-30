@@ -357,6 +357,35 @@ const LiftEditorScreen: React.FC = () => {
         }
     }, [shouldFocusOnEdit]);
 
+    // Sync firstInputValue when editingTarget changes
+    const previousEditingTargetRef = useRef<'none' | 'title' | 'movementName' | 'set'>('none');
+    useEffect(() => {
+        // Only update when editingTarget actually changes, not on every render
+        if (previousEditingTargetRef.current !== editingTarget) {
+            previousEditingTargetRef.current = editingTarget;
+
+            let newValue = '';
+            if (editingTarget === 'title') {
+                newValue = lift.title;
+            } else if (editingTarget === 'movementName' && editingMovementIndex !== null && editingMovementIndex >= 0) {
+                const movement = lift.movements[editingMovementIndex];
+                newValue = movement ? movement.name : '';
+            } else if (editingTarget === 'movementName' && isAddingNewMovement) {
+                newValue = '';
+            } else if (editingTarget === 'set' && editingMovementIndex !== null && editingMovementIndex >= 0) {
+                const movement = lift.movements[editingMovementIndex];
+                const set = movement && editingSetIndex !== null && editingSetIndex < movement.sets.length
+                    ? movement.sets[editingSetIndex]
+                    : null;
+                newValue = set ? set.weight : '';
+            } else if (editingTarget === 'none') {
+                newValue = '';
+            }
+
+            setFirstInputValue(newValue);
+        }
+    }, [editingTarget, editingMovementIndex, editingSetIndex, lift.title, lift.movements, isAddingNewMovement]);
+
     const loadLift = async (liftId: string) => {
         try {
             const liftData = await retrieveLift(liftId);
@@ -1027,7 +1056,17 @@ const LiftEditorScreen: React.FC = () => {
         return [];
     }, [movementSuggestions, suggestionContext, titleSuggestions, weightSuggestions]);
 
+    // Track the most recent value to detect if this is a user input or a sync
+    const lastFirstInputValueRef = useRef<string>('');
+
     const handleFirstValueChange = React.useCallback((value: string) => {
+        // Always update, but use a ref to track the most recent value
+        // This helps ensure we don't miss user input
+        const previousValue = lastFirstInputValueRef.current;
+        lastFirstInputValueRef.current = value;
+
+        // Always update state - React will handle batching
+        // The key is that this is called on every onChangeText, including the first keystroke
         setFirstInputValue(value);
     }, []);
 

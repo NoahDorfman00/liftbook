@@ -375,6 +375,9 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             const isProgrammatic = isProgrammaticUpdateRef.current;
                             isProgrammaticUpdateRef.current = false;
                             setFirstValue(text);
+                            // Always call onFirstValueChange for user input, even if there was a recent programmatic update
+                            // This ensures suggestions update on the first keystroke
+                            // Only skip if this onChangeText was triggered by the programmatic update itself
                             if (!isProgrammatic) {
                                 userDismissedKeyboardRef.current = false;
                                 onFirstValueChange?.(text);
@@ -384,6 +387,15 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                         clearTimeout(warningTimeout.current);
                                     }
                                     setShowWarning(false);
+                                }
+                            } else {
+                                // Even if this was triggered by a programmatic update, if the text is different
+                                // from what we set, it means the user has typed, so we should notify
+                                // Check if text differs from the expected initial value
+                                const expectedValue = initialValues?.first ?? '';
+                                if (text !== expectedValue) {
+                                    // User has modified the value, notify parent
+                                    onFirstValueChange?.(text);
                                 }
                             }
                         }}
