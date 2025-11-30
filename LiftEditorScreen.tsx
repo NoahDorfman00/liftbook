@@ -708,64 +708,100 @@ const LiftEditorScreen: React.FC = () => {
         return 'movement';
     }, [entryMode, editingTarget, lift.title]);
 
-    const titleSuggestions = React.useMemo(() => {
-        if (suggestionContext !== 'title') {
-            return [];
-        }
-        const query = firstInputValue.trim().toLowerCase();
-        const seen = new Set<string>();
-        const suggestions: string[] = [];
-
-        const fromHistory = query
-            ? orderedLiftTitles.filter(title => title.toLowerCase().startsWith(query))
-            : orderedLiftTitles;
-
-        fromHistory.some(title => {
-            const key = title.toLowerCase();
-            if (!seen.has(key)) {
-                seen.add(key);
-                suggestions.push(title);
-            }
-            return suggestions.length === 3;
-        });
-
-        if (suggestions.length < 3) {
-            const fromDefaults = query
-                ? DEFAULT_LIFT_TITLES.filter(title => title.toLowerCase().startsWith(query))
-                : DEFAULT_LIFT_TITLES;
-
-            for (const title of fromDefaults) {
-                if (suggestions.length >= 3) {
-                    break;
-                }
-                const key = title.toLowerCase();
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    suggestions.push(title);
-                }
-            }
-        }
-
-        return suggestions;
-    }, [suggestionContext, firstInputValue, orderedLiftTitles]);
-
-    // Helper function to split movement names into words
-    const splitIntoWords = (movementName: string): string[] => {
-        // Split on spaces, dashes, slashes, and parentheses
-        return movementName
-            .split(/[\s\-/()]+/)
+    // Helper function to split movement names or titles into words
+    const splitIntoWords = (text: string): string[] => {
+        // Split on spaces, dashes, slashes, colons, and parentheses
+        return text
+            .split(/[\s\-/:()]+/)
             .filter(word => word.length > 0)
             .map(word => word.toLowerCase());
     };
 
-    // Helper function to check if a movement matches the query
-    const matchesQuery = (movementName: string, query: string): boolean => {
+    // Helper function to check if a movement or title matches the query
+    const matchesQuery = (text: string, query: string): boolean => {
         if (!query) {
             return true;
         }
-        const words = splitIntoWords(movementName);
+        const words = splitIntoWords(text);
         return words.some(word => word.startsWith(query));
     };
+
+    const titleSuggestions = React.useMemo(() => {
+        if (suggestionContext !== 'title') {
+            return [];
+        }
+
+        const query = firstInputValue.trim().toLowerCase();
+        const seen = new Set<string>();
+
+        // Priority 1: User saved lift titles (already sorted by most recent to least recent)
+        const priority1: string[] = [];
+        orderedLiftTitles.forEach((title) => {
+            const trimmed = title.trim();
+            if (!trimmed) {
+                return;
+            }
+
+            const key = trimmed.toLowerCase();
+            if (seen.has(key)) {
+                return; // Already processed
+            }
+
+            const matches = matchesQuery(trimmed, query);
+            if (!matches) {
+                return; // Doesn't match query
+            }
+
+            seen.add(key);
+            priority1.push(trimmed);
+        });
+
+        // Priority 2: Default lift titles (alphabetically sorted)
+        const priority2: string[] = [];
+        // Sort defaults alphabetically
+        const sortedDefaults = [...DEFAULT_LIFT_TITLES].sort((a, b) => a.localeCompare(b));
+
+        sortedDefaults.forEach((title) => {
+            const trimmed = title.trim();
+            if (!trimmed) {
+                return;
+            }
+
+            const key = trimmed.toLowerCase();
+            if (seen.has(key)) {
+                return; // Already in a higher priority
+            }
+
+            const matches = matchesQuery(trimmed, query);
+            if (!matches) {
+                return; // Doesn't match query
+            }
+
+            seen.add(key);
+            priority2.push(trimmed);
+        });
+
+        // Combine priorities in order
+        const allSuggestions = [
+            ...priority1,
+            ...priority2,
+        ];
+
+        // Take top 3
+        const top3 = allSuggestions.slice(0, 3);
+
+        // Reorder for display: 1st in middle, 2nd on left, 3rd on right
+        // So we want: [2nd, 1st, 3rd] to display as: 2nd (left), 1st (middle), 3rd (right)
+        if (top3.length === 0) {
+            return [];
+        } else if (top3.length === 1) {
+            return [top3[0]];
+        } else if (top3.length === 2) {
+            return [top3[1], top3[0]]; // 2nd on left, 1st in middle
+        } else {
+            return [top3[1], top3[0], top3[2]]; // 2nd, 1st, 3rd
+        }
+    }, [suggestionContext, firstInputValue, orderedLiftTitles]);
 
     const movementSuggestions = React.useMemo(() => {
         if (suggestionContext !== 'movement') {
