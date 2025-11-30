@@ -999,15 +999,49 @@ const LiftEditorScreen: React.FC = () => {
             weight: number;
             sortKey: number;
         };
-        const weightedSets: WeightedSet[] = [];
 
-        Object.values(allLifts).forEach((liftItem) => {
+        // Find the most recent previous lift (before current lift in time) that has this movement
+        const currentLiftSortKey = getLiftSortKey(lift);
+        let previousLift: Lift | null = null;
+        let previousLiftSortKey = -1;
+
+        const allLiftsArray = Object.values(allLifts);
+        for (const liftItem of allLiftsArray) {
+            // Skip the current lift
+            if (liftItem.id === lift.id) {
+                continue;
+            }
+
             const liftSortKey = getLiftSortKey(liftItem);
-            liftItem.movements.forEach((movement) => {
+            // Only consider lifts that occurred BEFORE the current lift
+            if (liftSortKey >= currentLiftSortKey) {
+                continue;
+            }
+
+            // Check if this lift has the movement
+            const hasMovement = liftItem.movements.some(
+                (movement: Movement) => movement.name.trim().toLowerCase() === normalizedName
+            );
+
+            if (hasMovement) {
+                // Keep track of the most recent lift (highest sortKey) with this movement
+                // that occurred before the current lift
+                if (liftSortKey > previousLiftSortKey) {
+                    previousLiftSortKey = liftSortKey;
+                    previousLift = liftItem;
+                }
+            }
+        }
+
+        // Only collect weights from the most recent previous lift
+        const weightedSets: WeightedSet[] = [];
+        if (previousLift !== null) {
+            const liftToUse = previousLift;
+            liftToUse.movements.forEach((movement: Movement) => {
                 if (movement.name.trim().toLowerCase() !== normalizedName) {
                     return;
                 }
-                movement.sets.forEach((set, setIndex) => {
+                movement.sets.forEach((set: Set, setIndex: number) => {
                     const w = parseFloat(set.weight);
                     if (!Number.isFinite(w) || w <= 0) {
                         return;
@@ -1015,31 +1049,100 @@ const LiftEditorScreen: React.FC = () => {
                     weightedSets.push({
                         weight: w,
                         // Add a small per-set offset so later sets in the same lift are treated as more recent
-                        sortKey: liftSortKey * 1000 + setIndex,
+                        sortKey: previousLiftSortKey * 1000 + setIndex,
                     });
                 });
             });
-        });
+        }
+
+        const previousLiftInfo = previousLift !== null
+            ? `liftId=${previousLift.id}, date=${previousLift.date}, sortKey=${previousLiftSortKey} (current lift sortKey: ${currentLiftSortKey})`
+            : `none found (current lift sortKey: ${currentLiftSortKey})`;
+        console.log('[Weight Suggestions] Using previous lift:', previousLiftInfo);
+        console.log('[Weight Suggestions] Collected weights from previous lift only');
 
         if (weightedSets.length === 0) {
             return [];
         }
 
-        // Exclude outliers (e.g., warmups or 1RMs) using a simple median-based band.
+        // Find the tightest cluster of weights (working sets that are close together).
+        // This excludes warmups, drop sets, and max attempts that are far from the main cluster.
         const byWeight = [...weightedSets].sort((a, b) => a.weight - b.weight);
-        const median = byWeight[Math.floor(byWeight.length / 2)].weight;
-        const minAllowed = median * 0.8; // allow down to 80% of median (20% below)
-        const maxAllowed = median * 1.2; // and up to 120% of median (20% above)
+
+        console.log('[Weight Suggestions] Input weights (with sortKeys):', weightedSets.map(w => `${w.weight} (sortKey: ${w.sortKey})`).join(', '));
+        console.log('[Weight Suggestions] Sorted by weight:', byWeight.map(w => w.weight).join(', '));
+
+        if (byWeight.length === 0) {
+            return [];
+        }
+
+        // Find the tightest cluster by looking for the smallest range that contains
+        // at least 2 consecutive weights. Prioritize larger clusters when ranges are similar.
+        let bestCluster: typeof byWeight = [];
+        let bestRange = Infinity;
+
+        console.log('[Weight Suggestions] Testing clusters:');
+        // Try all possible starting points
+        for (let start = 0; start < byWeight.length; start++) {
+            // Try clusters of size 2, 3, 4, etc. starting from this point
+            for (let end = start + 1; end <= byWeight.length; end++) {
+                const cluster = byWeight.slice(start, end);
+                if (cluster.length < 2) continue;
+
+                const range = cluster[cluster.length - 1].weight - cluster[0].weight;
+                const rangePerItem = range / cluster.length; // Normalize by cluster size
+
+                const clusterWeights = cluster.map(w => w.weight).join(', ');
+                console.log(`  Cluster [${clusterWeights}]: range=${range.toFixed(2)}, rangePerItem=${rangePerItem.toFixed(2)}`);
+
+                // Prefer tighter clusters (smaller range per item), but if ranges are similar,
+                // prefer larger clusters (more values)
+                if (rangePerItem < bestRange ||
+                    (Math.abs(rangePerItem - bestRange) < 0.1 && cluster.length > bestCluster.length)) {
+                    bestRange = rangePerItem;
+                    bestCluster = cluster;
+                    console.log(`    -> New best cluster! rangePerItem=${rangePerItem.toFixed(2)}`);
+                }
+            }
+        }
+
+        // If we found a cluster, use it; otherwise use all weights
+        const workingWeights = bestCluster.length >= 2 ? bestCluster : byWeight;
+
+        console.log('[Weight Suggestions] Best cluster:', workingWeights.map(w => w.weight).join(', '));
+
+        // Calculate bounds based on the cluster's range
+        const clusterMin = workingWeights[0].weight;
+        const clusterMax = workingWeights[workingWeights.length - 1].weight;
+        const clusterRange = clusterMax - clusterMin;
+
+        // Allow a small buffer around the cluster (10% of the range on each side)
+        const buffer = Math.max(clusterRange * 0.1, 2.5); // At least 2.5 units buffer
+        const minAllowed = clusterMin - buffer;
+        const maxAllowed = clusterMax + buffer;
+
+        console.log(`[Weight Suggestions] Bounds: min=${minAllowed.toFixed(2)}, max=${maxAllowed.toFixed(2)} (cluster: ${clusterMin.toFixed(2)}-${clusterMax.toFixed(2)}, buffer=${buffer.toFixed(2)})`);
 
         const filtered = weightedSets.filter(
             (item) => item.weight >= minAllowed && item.weight <= maxAllowed
         );
 
-        const candidates = (filtered.length > 0 ? filtered : weightedSets).sort(
+        console.log('[Weight Suggestions] Filtered weights:', filtered.map(w => `${w.weight} (sortKey: ${w.sortKey})`).join(', '));
+
+        // Only use filtered weights - don't fall back to all weights if filtered is empty
+        if (filtered.length === 0) {
+            return [];
+        }
+
+        const candidates = filtered.sort(
             (a, b) => b.sortKey - a.sortKey
         );
 
+        console.log('[Weight Suggestions] Sorted candidates (by sortKey, descending):', candidates.map(w => `${w.weight} (sortKey: ${w.sortKey})`).join(', '));
+
         const best = candidates[0];
+        console.log('[Weight Suggestions] Final suggestion:', best ? best.weight.toString() : 'none');
+
         return best ? [best.weight.toString()] : [];
     }, [allLifts, editingMovementIndex, lift.movements, suggestionContext]);
 
