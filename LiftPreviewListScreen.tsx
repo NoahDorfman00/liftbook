@@ -43,10 +43,18 @@ const LiftPreviewListScreen: React.FC = () => {
                     })
                     .filter((lift): lift is LiftPreview => lift !== null)
                     .sort((a, b) => {
+                        // Sort by date - newer dates first
                         // Defensive sort that handles missing dates
                         const dateA = a.date || '';
                         const dateB = b.date || '';
-                        return dateB.localeCompare(dateA);
+                        const dateCompare = dateB.localeCompare(dateA);
+                        // If dates are the same, use timestamp (id) as tiebreaker for consistent ordering
+                        if (dateCompare === 0) {
+                            const idA = Number.isNaN(Number(a.id)) ? 0 : Number(a.id);
+                            const idB = Number.isNaN(Number(b.id)) ? 0 : Number(b.id);
+                            return idB - idA; // Newer timestamp first
+                        }
+                        return dateCompare;
                     });
 
                 console.log('Formatted lifts:', JSON.stringify(formattedLifts, null, 2));

@@ -25,6 +25,8 @@ interface EntryFooterProps {
     onSuggestionSelect?: (suggestion: string) => void;
     onFirstValueChange?: (value: string) => void;
     onFirstFieldFocus?: () => void;
+    forceFocus?: boolean;
+    shouldAutoFocusOnLoad?: boolean;
 }
 
 const isValidNumber = (value: string): boolean => {
@@ -43,6 +45,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     onSuggestionSelect,
     onFirstValueChange,
     onFirstFieldFocus,
+    forceFocus = false,
+    shouldAutoFocusOnLoad = false,
 }) => {
     console.log('EntryFooter render:', {
         mode,
@@ -91,12 +95,17 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             firstPlaceholder === 'Enter lift title...' &&
             !initialValues?.first;
 
+        const isNewMovement =
+            mode === 'single' &&
+            firstPlaceholder === 'Enter movement name...' &&
+            !initialValues?.first;
+
         const isInteractionMode = mode !== 'hidden';
-        
+
         // When editing an existing set (both weight and reps provided), auto-focus weight initially
         // but only once - don't re-focus if user manually focuses reps
-        const isEditingExistingSet = mode === 'double' && 
-            initialValues?.first != null && 
+        const isEditingExistingSet = mode === 'double' &&
+            initialValues?.first != null &&
             initialValues?.second != null;
 
         // Reset auto-focus tracking when the set being edited changes
@@ -110,10 +119,17 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             hasAutoFocusedForCurrentSetRef.current = false;
         }
 
+        // Only auto-focus if explicitly requested on load, or for manual interactions (forceFocus)
+        // For loads, only focus if shouldAutoFocusOnLoad is true
+        // For manual interactions (clicking to add movement), use forceFocus
         const shouldAutoFocus =
-            (mode === 'double' && (!isEditingExistingSet || !hasAutoFocusedForCurrentSetRef.current)) ||
-            isNewLift ||
-            (initialValues != null && isInteractionMode && !isEditingExistingSet);
+            shouldAutoFocusOnLoad && (
+                (mode === 'double' && (!isEditingExistingSet || !hasAutoFocusedForCurrentSetRef.current)) ||
+                isNewLift ||
+                isNewMovement ||
+                (initialValues != null && isInteractionMode && !isEditingExistingSet)
+            ) ||
+            forceFocus;
 
         if (shouldAutoFocus) {
             if (userDismissedKeyboardRef.current) {
@@ -128,7 +144,16 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 }
             }, 100);
         }
-    }, [mode, firstPlaceholder, initialValues]);
+    }, [mode, firstPlaceholder, initialValues, forceFocus, shouldAutoFocusOnLoad]);
+
+    // Explicit focus trigger when forceFocus prop is true (for manual interactions)
+    useEffect(() => {
+        if (forceFocus && mode !== 'hidden') {
+            setTimeout(() => {
+                firstInputRef.current?.focus();
+            }, 150);
+        }
+    }, [forceFocus, mode]);
 
     useEffect(() => {
         const previousInitial = previousInitialValuesRef.current;
@@ -551,6 +576,7 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontFamily: 'Schoolbell',
         color: '#333',
+        textAlign: 'center',
     },
 });
 

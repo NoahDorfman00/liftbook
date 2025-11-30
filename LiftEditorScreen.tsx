@@ -13,6 +13,7 @@ import {
     Image,
     LayoutChangeEvent,
     LayoutRectangle,
+    Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -23,6 +24,9 @@ import MessageBubble from './MessageBubble';
 import { RootStackParamList } from './types';
 import { retrieveLift, retrieveLifts, saveLiftLocally, deleteLiftLocally } from './utils';
 import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
+
+// Toggle to show/hide debug outlines for alignment debugging
+const DEBUG_OUTLINES_ENABLED = false;
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
@@ -84,6 +88,9 @@ const LiftEditorScreen: React.FC = () => {
     const [firstInputValue, setFirstInputValue] = useState('');
     const [pendingDeleteMovementIndex, setPendingDeleteMovementIndex] = useState<number | null>(null);
     const [pendingDeleteSet, setPendingDeleteSet] = useState<{ movementIndex: number; setIndex: number } | null>(null);
+    const [shouldAutoFocusOnLoad, setShouldAutoFocusOnLoad] = useState(false);
+    const [shouldFocusSetAfterMovementSubmit, setShouldFocusSetAfterMovementSubmit] = useState(false);
+    const [shouldFocusSetOnEmptyLineClick, setShouldFocusSetOnEmptyLineClick] = useState(false);
 
     const scrollViewRef = useRef<ScrollView>(null);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -141,7 +148,9 @@ const LiftEditorScreen: React.FC = () => {
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
-            setEditingTarget('none');
+            setEditingTarget('title');
+            setIsAddingNewMovement(false);
+            setShouldAutoFocusOnLoad(true);
         }
     }, [route.params?.liftId]);
 
@@ -356,6 +365,36 @@ const LiftEditorScreen: React.FC = () => {
         lift.movements,
     ]);
 
+    // Reset shouldAutoFocusOnLoad after it's been used
+    useEffect(() => {
+        if (shouldAutoFocusOnLoad) {
+            const timeout = setTimeout(() => {
+                setShouldAutoFocusOnLoad(false);
+            }, 300);
+            return () => clearTimeout(timeout);
+        }
+    }, [shouldAutoFocusOnLoad]);
+
+    // Reset shouldFocusSetAfterMovementSubmit after it's been used
+    useEffect(() => {
+        if (shouldFocusSetAfterMovementSubmit) {
+            const timeout = setTimeout(() => {
+                setShouldFocusSetAfterMovementSubmit(false);
+            }, 300);
+            return () => clearTimeout(timeout);
+        }
+    }, [shouldFocusSetAfterMovementSubmit]);
+
+    // Reset shouldFocusSetOnEmptyLineClick after it's been used
+    useEffect(() => {
+        if (shouldFocusSetOnEmptyLineClick) {
+            const timeout = setTimeout(() => {
+                setShouldFocusSetOnEmptyLineClick(false);
+            }, 300);
+            return () => clearTimeout(timeout);
+        }
+    }, [shouldFocusSetOnEmptyLineClick]);
+
     const loadLift = async (liftId: string) => {
         try {
             console.log('Loading existing lift:', liftId);
@@ -382,10 +421,48 @@ const LiftEditorScreen: React.FC = () => {
 
             console.log('Setting lift data with date:', updatedLiftData.date);
             setLift(updatedLiftData);
-            setEntryMode('single');
-            setEditingMovementIndex(null);
-            setEditingSetIndex(null);
-            setEditingTarget('none');
+
+            // Determine auto-focus behavior based on lift state
+            const hasTitle = updatedLiftData.title.trim().length > 0;
+            const hasMovements = updatedLiftData.movements.length > 0;
+            const lastMovement = hasMovements ? updatedLiftData.movements[updatedLiftData.movements.length - 1] : null;
+            const lastMovementHasSets = lastMovement && lastMovement.sets.length > 0;
+
+            if (!hasTitle) {
+                // New lift: focus on title
+                setEntryMode('single');
+                setEditingTarget('title');
+                setEditingMovementIndex(null);
+                setEditingSetIndex(null);
+                setIsAddingNewMovement(false);
+                setShouldAutoFocusOnLoad(true);
+            } else if (!hasMovements) {
+                // Lift with only title: focus on movement
+                setEntryMode('single');
+                setEditingTarget('movementName');
+                setEditingMovementIndex(NEW_MOVEMENT_INDEX);
+                setEditingSetIndex(null);
+                setIsAddingNewMovement(true);
+                setShouldAutoFocusOnLoad(true);
+            } else if (!lastMovementHasSets) {
+                // Lift with movement at bottom with no sets: focus on set weight
+                const lastMovementIndex = updatedLiftData.movements.length - 1;
+                setEntryMode('double');
+                setEditingTarget('set');
+                setEditingMovementIndex(lastMovementIndex);
+                setEditingSetIndex(0);
+                setIsAddingNewMovement(false);
+                setShouldAutoFocusOnLoad(true);
+            } else {
+                // Other cases: no auto-focus
+                setEntryMode('single');
+                setEditingTarget('none');
+                setEditingMovementIndex(null);
+                setEditingSetIndex(null);
+                setIsAddingNewMovement(false);
+                setShouldAutoFocusOnLoad(false);
+            }
+
             setIsLoading(false);
             setAllLifts(prev => ({ ...prev, [updatedLiftData.id]: updatedLiftData }));
         } catch (error) {
@@ -425,9 +502,13 @@ const LiftEditorScreen: React.FC = () => {
                 const newLift = { ...lift, title: first };
                 setLift(newLift);
                 saveLift(newLift);
-                setEditingTarget('none');
+                // Automatically transition to adding a new movement
+                setIsAddingNewMovement(true);
+                setEditingMovementIndex(NEW_MOVEMENT_INDEX);
+                setEditingSetIndex(null);
+                setEditingTarget('movementName');
                 setEntryMode('single');
-                setIsAddingNewMovement(false);
+                setFirstInputValue('');
             } else {
                 const isExistingMovement =
                     editingTarget === 'movementName' &&
@@ -460,6 +541,7 @@ const LiftEditorScreen: React.FC = () => {
                     setEditingTarget('set');
                     setEntryMode('double');
                     setIsAddingNewMovement(false);
+                    setShouldFocusSetAfterMovementSubmit(true);
                 }
             }
         } else if (entryMode === 'double' && second) {
@@ -729,6 +811,24 @@ const LiftEditorScreen: React.FC = () => {
         return suggestions;
     }, [suggestionContext, firstInputValue, orderedLiftTitles]);
 
+    // Helper function to split movement names into words
+    const splitIntoWords = (movementName: string): string[] => {
+        // Split on spaces, dashes, slashes, and parentheses
+        return movementName
+            .split(/[\s\-/()]+/)
+            .filter(word => word.length > 0)
+            .map(word => word.toLowerCase());
+    };
+
+    // Helper function to check if a movement matches the query
+    const matchesQuery = (movementName: string, query: string): boolean => {
+        if (!query) {
+            return true;
+        }
+        const words = splitIntoWords(movementName);
+        return words.some(word => word.startsWith(query));
+    };
+
     const movementSuggestions = React.useMemo(() => {
         if (suggestionContext !== 'movement') {
             return [];
@@ -737,12 +837,7 @@ const LiftEditorScreen: React.FC = () => {
         const query = firstInputValue.trim().toLowerCase();
         const normalizedCurrentTitle = lift.title.trim().toLowerCase();
 
-        const candidateLifts = Object.values(allLifts)
-            .filter(item => item.id !== lift.id && item.title && item.title.trim().toLowerCase() === normalizedCurrentTitle)
-            .sort((a, b) => getLiftSortKey(b) - getLiftSortKey(a));
-
-        const referenceLift = candidateLifts[0];
-
+        // Get all movements already in the current lift
         const existingNames = new Set<string>();
         lift.movements.forEach((movement) => {
             if (movement.name.trim()) {
@@ -750,43 +845,111 @@ const LiftEditorScreen: React.FC = () => {
             }
         });
 
-        const seen = new Set<string>();
-        const suggestions: string[] = [];
+        // Collect all movements from all lifts, categorized by priority
+        const priority1: string[] = []; // Movements from name-matched lifts that haven't been used
+        const priority2: string[] = []; // Movements from other-named lifts that haven't been used
+        const priority3: string[] = []; // Defaults that haven't been used
+        const priority4: string[] = []; // Movements already in current lift
 
-        const addSuggestion = (name: string) => {
-            if (suggestions.length >= 3) {
-                return;
+        const seen = new Set<string>();
+
+        // Process all lifts
+        Object.values(allLifts).forEach((liftItem) => {
+            if (liftItem.id === lift.id) {
+                return; // Skip current lift
             }
-            const trimmed = name.trim();
+
+            const isNameMatched = liftItem.title &&
+                liftItem.title.trim().toLowerCase() === normalizedCurrentTitle;
+
+            liftItem.movements.forEach((movement) => {
+                const trimmed = movement.name.trim();
+                if (!trimmed) {
+                    return;
+                }
+
+                const key = trimmed.toLowerCase();
+                if (seen.has(key)) {
+                    return; // Already processed this movement
+                }
+
+                const isExisting = existingNames.has(key);
+                const matches = matchesQuery(trimmed, query);
+
+                if (!matches) {
+                    return; // Doesn't match query
+                }
+
+                seen.add(key);
+
+                if (isExisting) {
+                    // Movements already in current lift go to lowest priority
+                    priority4.push(trimmed);
+                } else if (isNameMatched) {
+                    // Priority 1: from name-matched lifts, not used in current lift
+                    priority1.push(trimmed);
+                } else {
+                    // Priority 2: from other-named lifts, not used in current lift
+                    priority2.push(trimmed);
+                }
+            });
+        });
+
+        // Add defaults to priority 3 (if not already in other priorities)
+        DEFAULT_MOVEMENTS.forEach((defaultMovement) => {
+            const trimmed = defaultMovement.trim();
             if (!trimmed) {
                 return;
             }
+
             const key = trimmed.toLowerCase();
-            if (existingNames.has(key)) {
-                return;
-            }
             if (seen.has(key)) {
+                return; // Already in a higher priority
+            }
+
+            const matches = matchesQuery(trimmed, query);
+            if (!matches) {
                 return;
             }
-            if (query && !key.startsWith(query)) {
-                return;
-            }
+
+            const isExisting = existingNames.has(key);
             seen.add(key);
-            suggestions.push(trimmed);
-        };
 
-        referenceLift?.movements.forEach(movement => addSuggestion(movement.name));
-
-        if (suggestions.length < 3) {
-            for (const name of DEFAULT_MOVEMENTS) {
-                if (suggestions.length >= 3) {
-                    break;
-                }
-                addSuggestion(name);
+            if (isExisting) {
+                priority4.push(trimmed);
+            } else {
+                priority3.push(trimmed);
             }
-        }
+        });
 
-        return suggestions;
+        // Sort each priority alphabetically
+        priority1.sort((a, b) => a.localeCompare(b));
+        priority2.sort((a, b) => a.localeCompare(b));
+        priority3.sort((a, b) => a.localeCompare(b));
+        priority4.sort((a, b) => a.localeCompare(b));
+
+        // Combine priorities in order
+        const allSuggestions = [
+            ...priority1,
+            ...priority2,
+            ...priority3,
+            ...priority4,
+        ];
+
+        // Take top 3
+        const top3 = allSuggestions.slice(0, 3);
+
+        // Reorder for display: 1st in middle, 2nd on left, 3rd on right
+        // So we want: [2nd, 1st, 3rd] to display as: 2nd (left), 1st (middle), 3rd (right)
+        if (top3.length === 0) {
+            return [];
+        } else if (top3.length === 1) {
+            return [top3[0]];
+        } else if (top3.length === 2) {
+            return [top3[1], top3[0]]; // 2nd on left, 1st in middle
+        } else {
+            return [top3[1], top3[0], top3[2]]; // 2nd, 1st, 3rd
+        }
     }, [
         suggestionContext,
         firstInputValue,
@@ -851,8 +1014,8 @@ const LiftEditorScreen: React.FC = () => {
         // Exclude outliers (e.g., warmups or 1RMs) using a simple median-based band.
         const byWeight = [...weightedSets].sort((a, b) => a.weight - b.weight);
         const median = byWeight[Math.floor(byWeight.length / 2)].weight;
-        const minAllowed = median * 0.6; // allow down to 60% of median
-        const maxAllowed = median * 1.4; // and up to 140% of median
+        const minAllowed = median * 0.8; // allow down to 80% of median (20% below)
+        const maxAllowed = median * 1.2; // and up to 120% of median (20% above)
 
         const filtered = weightedSets.filter(
             (item) => item.weight >= minAllowed && item.weight <= maxAllowed
@@ -929,6 +1092,21 @@ const LiftEditorScreen: React.FC = () => {
             keyboardHeight,
         });
 
+        // If user focuses on movement entry field, show the empty movement bubble
+        // Check if we should be entering a movement name (when title exists and no movement is being added)
+        const shouldShowMovementBubble =
+            lift.title.trim().length > 0 &&
+            (editingTarget === 'none' || (editingTarget === 'movementName' && !isAddingNewMovement));
+
+        if (shouldShowMovementBubble && !isAddingNewMovement) {
+            setIsAddingNewMovement(true);
+            setEditingMovementIndex(NEW_MOVEMENT_INDEX);
+            setEditingSetIndex(null);
+            setEditingTarget('movementName');
+            setEntryMode('single');
+            setFirstInputValue('');
+        }
+
         if (editingTarget === 'none') {
             // User is likely adding a brand new movement/set; ensure bottom content clears the footer.
             setTimeout(() => {
@@ -946,6 +1124,8 @@ const LiftEditorScreen: React.FC = () => {
         entryMode,
         keyboardHeight,
         scrollToEnd,
+        isAddingNewMovement,
+        lift.title,
     ]);
 
     return (
@@ -1022,7 +1202,11 @@ const LiftEditorScreen: React.FC = () => {
                                         key={index}
                                         collapsable={false}
                                         onLayout={(event) => registerMovementLayout(index, event.nativeEvent.layout)}
+                                        style={{ position: 'relative' }}
                                     >
+                                        {DEBUG_OUTLINES_ENABLED && (
+                                            <View style={styles.debugExistingMovementOverlay} pointerEvents="none" />
+                                        )}
                                         <MessageBubble
                                             type="movement"
                                             content={movement}
@@ -1048,6 +1232,7 @@ const LiftEditorScreen: React.FC = () => {
                                                 setEditingSetIndex(lift.movements[index].sets.length);
                                                 setEditingTarget('set');
                                                 setEntryMode('double');
+                                                setShouldFocusSetOnEmptyLineClick(true);
                                             }}
                                             onSetLayout={(setIdx, layout) => registerSetLayout(index, setIdx, layout)}
                                             onAddSetLayout={(layout) => registerAddSetLayout(index, layout)}
@@ -1086,38 +1271,66 @@ const LiftEditorScreen: React.FC = () => {
                                     </View>
                                 ))}
 
-                                {(entryMode === 'single' && lift.title.trim().length > 0 && keyboardHeight > 0 && (editingTarget === 'none' || isAddingNewMovement)) && (
-                                    <View
-                                        collapsable={false}
-                                        onLayout={(event) => registerMovementLayout(NEW_MOVEMENT_INDEX, event.nativeEvent.layout)}
-                                    >
-                                        <MessageBubble
-                                            type="movement"
-                                            content={{ name: '', sets: [] }}
-                                            movementPlaceholderText="Movement"
-                                            showMovementPlaceholder
-                                            isMovementNameHighlighted={isAddingNewMovement}
-                                            prependEmptyLine={lift.movements.length > 0}
-                                            onMovementPress={() => {
-                                                setIsAddingNewMovement(true);
-                                                setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                                                setEditingSetIndex(null);
-                                                setEditingTarget('movementName');
-                                                setEntryMode('single');
-                                                setFirstInputValue('');
-                                            }}
-                                            onEmptyLinePress={() => {
-                                                setIsAddingNewMovement(true);
-                                                setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                                                setEditingSetIndex(null);
-                                                setEditingTarget('movementName');
-                                                setEntryMode('single');
-                                                setFirstInputValue('');
-                                            }}
-                                            isLast={true}
-                                            onAddSetLayout={(layout) => registerAddSetLayout(NEW_MOVEMENT_INDEX, layout)}
-                                        />
-                                    </View>
+                                {/* Empty line after all movements to tap and add a new movement, OR show the new movement bubble */}
+                                {lift.title.trim().length > 0 && (
+                                    <>
+                                        {!isAddingNewMovement && (
+                                            <Pressable
+                                                onPress={() => {
+                                                    setIsAddingNewMovement(true);
+                                                    setEditingMovementIndex(NEW_MOVEMENT_INDEX);
+                                                    setEditingSetIndex(null);
+                                                    setEditingTarget('movementName');
+                                                    setEntryMode('single');
+                                                    setFirstInputValue('');
+                                                }}
+                                            >
+                                                <View style={styles.emptyLine}>
+                                                    {DEBUG_OUTLINES_ENABLED && (
+                                                        <View style={styles.debugClickableAreaOverlay} />
+                                                    )}
+                                                </View>
+                                            </Pressable>
+                                        )}
+
+                                        {isAddingNewMovement && (
+                                            <View
+                                                collapsable={false}
+                                                onLayout={(event) => registerMovementLayout(NEW_MOVEMENT_INDEX, event.nativeEvent.layout)}
+                                                style={{ position: 'relative' }}
+                                            >
+                                                {DEBUG_OUTLINES_ENABLED && (
+                                                    <View style={styles.debugPlacementAreaOverlay} pointerEvents="none" />
+                                                )}
+                                                <MessageBubble
+                                                    type="movement"
+                                                    content={{ name: '', sets: [] }}
+                                                    movementPlaceholderText="Movement"
+                                                    showMovementPlaceholder={true}
+                                                    isMovementNameHighlighted={isAddingNewMovement}
+                                                    prependEmptyLine={false}
+                                                    onMovementPress={() => {
+                                                        setIsAddingNewMovement(true);
+                                                        setEditingMovementIndex(NEW_MOVEMENT_INDEX);
+                                                        setEditingSetIndex(null);
+                                                        setEditingTarget('movementName');
+                                                        setEntryMode('single');
+                                                        setFirstInputValue('');
+                                                    }}
+                                                    onEmptyLinePress={() => {
+                                                        setIsAddingNewMovement(true);
+                                                        setEditingMovementIndex(NEW_MOVEMENT_INDEX);
+                                                        setEditingSetIndex(null);
+                                                        setEditingTarget('movementName');
+                                                        setEntryMode('single');
+                                                        setFirstInputValue('');
+                                                    }}
+                                                    isLast={true}
+                                                    onAddSetLayout={(layout) => registerAddSetLayout(NEW_MOVEMENT_INDEX, layout)}
+                                                />
+                                            </View>
+                                        )}
+                                    </>
                                 )}
                             </View>
                         </View>
@@ -1152,6 +1365,12 @@ const LiftEditorScreen: React.FC = () => {
                                 suggestions={suggestionsForInput}
                                 onFirstValueChange={handleFirstValueChange}
                                 onFirstFieldFocus={handleEntryFooterFocus}
+                                forceFocus={
+                                    (isAddingNewMovement && editingTarget === 'movementName' && !shouldAutoFocusOnLoad) ||
+                                    shouldFocusSetAfterMovementSubmit ||
+                                    shouldFocusSetOnEmptyLineClick
+                                }
+                                shouldAutoFocusOnLoad={shouldAutoFocusOnLoad}
                             />
                         </View>
                     )}
@@ -1287,6 +1506,45 @@ const styles = StyleSheet.create({
     },
     datePicker: {
         height: 200,
+    },
+    emptyLine: {
+        height: 24,
+        position: 'relative',
+    },
+    debugClickableAreaOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Red tint for clickable area
+        borderWidth: 2,
+        borderColor: 'red',
+        borderStyle: 'dashed',
+    },
+    debugPlacementAreaOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 255, 0, 0.2)', // Green tint for placement area
+        borderWidth: 2,
+        borderColor: 'green',
+        borderStyle: 'dashed',
+        zIndex: 1000,
+    },
+    debugExistingMovementOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(128, 0, 128, 0.2)', // Purple tint for existing movement bubbles
+        borderWidth: 2,
+        borderColor: 'purple',
+        borderStyle: 'dashed',
+        zIndex: 1000,
     },
 });
 

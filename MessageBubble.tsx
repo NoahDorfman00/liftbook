@@ -9,6 +9,9 @@ import {
     LayoutRectangle,
 } from 'react-native';
 
+// Toggle to show/hide debug outlines for alignment debugging
+const DEBUG_OUTLINES_ENABLED = false;
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -97,6 +100,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     style={styles.titleLineContainer}
                     onLayout={(event) => onTitleLayout?.(event.nativeEvent.layout)}
                 >
+                    {DEBUG_OUTLINES_ENABLED && (
+                        <View style={styles.debugTitleOverlay} pointerEvents="none" />
+                    )}
                     <Pressable
                         hitSlop={pressableHitSlop}
                         onPress={onTitlePress}
@@ -115,7 +121,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                         )}
                     </Pressable>
                 </View>
-                {!isLast && <View style={styles.emptyLine} />}
             </>
         );
     }
@@ -135,6 +140,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             >
                 {({ pressed }) => (
                     <View style={styles.movementLineContainer}>
+                        {DEBUG_OUTLINES_ENABLED && isMovementPlaceholderActive && (
+                            <View style={styles.debugMovementPlacementOverlay} pointerEvents="none" />
+                        )}
                         <Text
                             style={[
                                 styles.movementText,
@@ -185,6 +193,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     ]}
                     onLayout={(event) => onAddSetLayout?.(event.nativeEvent.layout)}
                 >
+                    {DEBUG_OUTLINES_ENABLED && (
+                        <View style={styles.debugNewSetClickableOverlay} pointerEvents="none" />
+                    )}
                     {showSetPlaceholder && (
                         <Text style={[styles.text, styles.setText, styles.placeholderText]}>
                             {setPlaceholderText}
@@ -192,7 +203,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     )}
                 </View>
             </Pressable>
-            {!isLast && <View style={styles.emptyLine} />}
+            {/* Show extra line only when adding a set to maintain spacing with next movement */}
+            {!isLast && showSetPlaceholder && <View style={styles.emptyLine} />}
         </>
     );
 };
@@ -203,13 +215,15 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     titleLineContainer: {
-        height: 48, // Two lines
+        height: 72, // Three lines (one line taller)
         justifyContent: 'center',
+        position: 'relative',
     },
     movementLineContainer: {
         height: 28, // allow descenders for movement name
         justifyContent: 'flex-end',
         marginBottom: -4, // shrink gap below movement name
+        position: 'relative',
     },
     text: {
         fontSize: 20,
@@ -237,6 +251,7 @@ const styles = StyleSheet.create({
     },
     emptyLine: {
         height: 24,
+        position: 'relative',
     },
     setLineContainer: {
         // no negative margin here
@@ -249,6 +264,39 @@ const styles = StyleSheet.create({
     },
     placeholderLine: {
         justifyContent: 'flex-end',
+    },
+    debugMovementPlacementOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 255, 0.2)', // Blue tint for movement placement
+        borderWidth: 2,
+        borderColor: 'blue',
+        borderStyle: 'dashed',
+    },
+    debugNewSetClickableOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 165, 0, 0.2)', // Orange tint for new set clickable area
+        borderWidth: 2,
+        borderColor: 'orange',
+        borderStyle: 'dashed',
+    },
+    debugTitleOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 192, 203, 0.2)', // Pink tint for title bubble
+        borderWidth: 2,
+        borderColor: 'pink',
+        borderStyle: 'dashed',
     },
 });
 
