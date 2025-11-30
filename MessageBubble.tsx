@@ -107,6 +107,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                         hitSlop={pressableHitSlop}
                         onPress={onTitlePress}
                         onLongPress={onTitleLongPress}
+                        android_ripple={null}
                     >
                         {({ pressed }) => (
                             <Text
@@ -137,6 +138,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 onPress={onMovementPress}
                 onLongPress={onMovementLongPress}
                 hitSlop={pressableHitSlop}
+                android_ripple={null}
             >
                 {({ pressed }) => (
                     <View style={styles.movementLineContainer}>
@@ -165,6 +167,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                         hitSlop={pressableHitSlop}
                         onLongPress={() => onSetLongPress && onSetLongPress(idx)}
                         onPress={() => onSetPress && onSetPress(idx)}
+                        android_ripple={null}
+                        unstable_pressDelay={0}
                     >
                         {({ pressed }) => (
                             <Text
@@ -185,7 +189,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     </Pressable>
                 </View>
             ))}
-            <Pressable onPress={onEmptyLinePress}>
+            <Pressable onPress={onEmptyLinePress} android_ripple={null}>
                 <View
                     style={[
                         styles.emptyLine,

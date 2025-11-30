@@ -92,6 +92,11 @@ const LiftEditorScreen: React.FC = () => {
     const [shouldFocusSetAfterMovementSubmit, setShouldFocusSetAfterMovementSubmit] = useState(false);
     const [shouldFocusSetOnEmptyLineClick, setShouldFocusSetOnEmptyLineClick] = useState(false);
     const [shouldFocusOnEdit, setShouldFocusOnEdit] = useState(false);
+    const [entryFooterResetKey, setEntryFooterResetKey] = useState(0);
+    const isTransitioningToSetRef = useRef(false);
+    const editingTargetRef = useRef<'none' | 'title' | 'movementName' | 'set'>(editingTarget);
+    const isAddingNewMovementRef = useRef(isAddingNewMovement);
+    const pendingResetKeyIncrementRef = useRef(false);
 
     const scrollViewRef = useRef<ScrollView>(null);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -360,6 +365,10 @@ const LiftEditorScreen: React.FC = () => {
     // Sync firstInputValue when editingTarget changes
     const previousEditingTargetRef = useRef<'none' | 'title' | 'movementName' | 'set'>('none');
     useEffect(() => {
+        // Update refs to track current state values
+        editingTargetRef.current = editingTarget;
+        isAddingNewMovementRef.current = isAddingNewMovement;
+
         // Only update when editingTarget actually changes, not on every render
         if (previousEditingTargetRef.current !== editingTarget) {
             previousEditingTargetRef.current = editingTarget;
@@ -385,6 +394,17 @@ const LiftEditorScreen: React.FC = () => {
             setFirstInputValue(newValue);
         }
     }, [editingTarget, editingMovementIndex, editingSetIndex, lift.title, lift.movements, isAddingNewMovement]);
+
+    // Handle reset key increment after state updates are applied
+    useEffect(() => {
+        if (pendingResetKeyIncrementRef.current && editingTarget === 'set') {
+            pendingResetKeyIncrementRef.current = false;
+            setEntryFooterResetKey(prev => prev + 1);
+            setTimeout(() => {
+                isTransitioningToSetRef.current = false;
+            }, 100);
+        }
+    }, [editingTarget]);
 
     const loadLift = async (liftId: string) => {
         try {
@@ -641,8 +661,8 @@ const LiftEditorScreen: React.FC = () => {
     };
 
     const handleKeyboardDismiss = () => {
-        // Only reset states if we're not actively editing
-        if (!isSubmitting.current) {
+        // Only reset states if we're not actively editing and not transitioning to set editing
+        if (!isSubmitting.current && !isTransitioningToSetRef.current) {
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
@@ -1178,15 +1198,33 @@ const LiftEditorScreen: React.FC = () => {
     }, []);
 
     const handleEntryFooterFocus = React.useCallback(() => {
+        // Use refs to get current values (no closure issues)
+        const currentEditingTarget = editingTargetRef.current;
+        const currentIsAddingNewMovement = isAddingNewMovementRef.current;
+
+        // Don't show movement bubble if we're editing a set or transitioning to set editing
+        // Check the ref first (synchronous, no closure issues), then check editingTarget
+        if (isTransitioningToSetRef.current) {
+            // Don't clear the ref here - let the timeout in onEmptyLinePress handle it
+            attemptScrollToActiveTarget();
+            return;
+        }
+
+        // Also check if we're in set editing mode by checking the ref (current value)
+        if (currentEditingTarget === 'set') {
+            attemptScrollToActiveTarget();
+            return;
+        }
+
         // If user focuses on movement entry field, show the empty movement bubble
         // Only show new movement bubble when adding a new movement, not when editing an existing one
         const isEditingExistingMovement = editingMovementIndex !== null && editingMovementIndex >= 0;
         const shouldShowMovementBubble =
             lift.title.trim().length > 0 &&
             !isEditingExistingMovement &&
-            (editingTarget === 'none' || (editingTarget === 'movementName' && !isAddingNewMovement));
+            (currentEditingTarget === 'none' || (currentEditingTarget === 'movementName' && !currentIsAddingNewMovement));
 
-        if (shouldShowMovementBubble && !isAddingNewMovement) {
+        if (shouldShowMovementBubble && !currentIsAddingNewMovement) {
             setIsAddingNewMovement(true);
             setEditingMovementIndex(NEW_MOVEMENT_INDEX);
             setEditingSetIndex(null);
@@ -1195,7 +1233,7 @@ const LiftEditorScreen: React.FC = () => {
             setFirstInputValue('');
         }
 
-        if (editingTarget === 'none') {
+        if (currentEditingTarget === 'none') {
             // User is likely adding a brand new movement/set; ensure bottom content clears the footer.
             setTimeout(() => {
                 scrollToEnd();
@@ -1317,12 +1355,33 @@ const LiftEditorScreen: React.FC = () => {
                                             }}
                                             onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
                                             onEmptyLinePress={() => {
+                                                const hasTextToClear = firstInputValue.trim().length > 0;
+
+                                                // Set the transition flag first (synchronous, no closure issues)
+                                                isTransitioningToSetRef.current = true;
+                                                // Update all state - React will batch these updates
                                                 setIsAddingNewMovement(false);
                                                 setEditingMovementIndex(index);
                                                 setEditingSetIndex(lift.movements[index].sets.length);
                                                 setEditingTarget('set');
                                                 setEntryMode('double');
+                                                setFirstInputValue('');
                                                 setShouldFocusSetOnEmptyLineClick(true);
+                                                // Update refs immediately (synchronous)
+                                                editingTargetRef.current = 'set';
+                                                isAddingNewMovementRef.current = false;
+
+                                                // Only increment reset key if there's text to clear
+                                                // Use useEffect to ensure state updates are applied before remount
+                                                if (hasTextToClear) {
+                                                    // Set flag to increment reset key after state updates
+                                                    pendingResetKeyIncrementRef.current = true;
+                                                } else {
+                                                    // No text to clear, just clear the transition flag
+                                                    setTimeout(() => {
+                                                        isTransitioningToSetRef.current = false;
+                                                    }, 100);
+                                                }
                                             }}
                                             onSetLayout={(setIdx, layout) => registerSetLayout(index, setIdx, layout)}
                                             onAddSetLayout={(layout) => registerAddSetLayout(index, layout)}
@@ -1367,13 +1426,18 @@ const LiftEditorScreen: React.FC = () => {
                                         {!isAddingNewMovement && (
                                             <Pressable
                                                 onPress={() => {
+                                                    const hasTextToClear = firstInputValue.trim().length > 0;
                                                     setIsAddingNewMovement(true);
                                                     setEditingMovementIndex(NEW_MOVEMENT_INDEX);
                                                     setEditingSetIndex(null);
                                                     setEditingTarget('movementName');
                                                     setEntryMode('single');
                                                     setFirstInputValue('');
+                                                    if (hasTextToClear) {
+                                                        setEntryFooterResetKey(prev => prev + 1);
+                                                    }
                                                 }}
+                                                android_ripple={null}
                                             >
                                                 <View style={styles.emptyLine}>
                                                     {DEBUG_OUTLINES_ENABLED && (
@@ -1408,12 +1472,16 @@ const LiftEditorScreen: React.FC = () => {
                                                         setFirstInputValue('');
                                                     }}
                                                     onEmptyLinePress={() => {
+                                                        const hasTextToClear = firstInputValue.trim().length > 0;
                                                         setIsAddingNewMovement(true);
                                                         setEditingMovementIndex(NEW_MOVEMENT_INDEX);
                                                         setEditingSetIndex(null);
                                                         setEditingTarget('movementName');
                                                         setEntryMode('single');
                                                         setFirstInputValue('');
+                                                        if (hasTextToClear) {
+                                                            setEntryFooterResetKey(prev => prev + 1);
+                                                        }
                                                     }}
                                                     isLast={true}
                                                     onAddSetLayout={(layout) => registerAddSetLayout(NEW_MOVEMENT_INDEX, layout)}
@@ -1429,6 +1497,7 @@ const LiftEditorScreen: React.FC = () => {
                     {!isLoading && (
                         <View onLayout={handleFooterLayout}>
                             <EntryFooter
+                                key={entryFooterResetKey}
                                 mode={entryMode}
                                 onSubmit={handleEntrySubmit}
                                 initialValues={
