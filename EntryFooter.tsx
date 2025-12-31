@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PanGestureHandler, State as GestureState } from 'react-native-gesture-handler';
 
-export type EntryMode = 'single' | 'double' | 'hidden';
+export type EntryMode = 'single' | 'double';
 
 interface EntryFooterProps {
     mode: EntryMode;
@@ -27,6 +27,7 @@ interface EntryFooterProps {
     onFirstFieldFocus?: () => void;
     forceFocus?: boolean;
     shouldAutoFocusOnLoad?: boolean;
+    focusTrigger?: number;
 }
 
 const isValidNumber = (value: string): boolean => {
@@ -47,10 +48,20 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     onFirstFieldFocus,
     forceFocus = false,
     shouldAutoFocusOnLoad = false,
+    focusTrigger = 0,
 }) => {
     const insets = useSafeAreaInsets();
     const [firstValue, setFirstValue] = useState(initialValues?.first || '');
     const [secondValue, setSecondValue] = useState(initialValues?.second || '');
+    
+    // Debug: Log initial mount values and value changes
+    React.useEffect(() => {
+        console.log('[DEBUG EntryFooter] Component mounted/remounted with initialValues:', initialValues, 'firstValue:', firstValue);
+    }, []);
+    
+    React.useEffect(() => {
+        console.log('[DEBUG EntryFooter] firstValue changed to:', firstValue);
+    }, [firstValue]);
     const [showWarning, setShowWarning] = useState(false);
     const [warningMessage, setWarningMessage] = useState('');
     const firstInputRef = useRef<TextInput>(null);
@@ -65,8 +76,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const isProgrammaticUpdateRef = useRef(false);
     const userDismissedKeyboardRef = useRef(false);
     const hasTriggeredDismissRef = useRef(false);
-    const hasAutoFocusedForCurrentSetRef = useRef(false);
-    const previousSetKeyRef = useRef<string>('');
     const [activeField, setActiveField] = useState<'first' | 'second'>('first');
 
     const showWarningMessage = (message: string) => {
@@ -81,72 +90,41 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         }, 2500);
     };
 
+    // Clear warnings when mode, initialValues, or focusTrigger change (user switched to different item)
     useEffect(() => {
-        // Auto-focus when adding sets (double mode), when entering a new lift title,
-        // or when editing existing values with initialValues provided
-        const isNewLift =
-            mode === 'single' &&
-            firstPlaceholder === 'Enter lift title...' &&
-            !initialValues?.first;
-
-        const isNewMovement =
-            mode === 'single' &&
-            firstPlaceholder === 'Enter movement name...' &&
-            !initialValues?.first;
-
-        const isInteractionMode = mode !== 'hidden';
-
-        // When editing an existing set (both weight and reps provided), auto-focus weight initially
-        // but only once - don't re-focus if user manually focuses reps
-        const isEditingExistingSet = mode === 'double' &&
-            initialValues?.first != null &&
-            initialValues?.second != null;
-
-        // Reset auto-focus tracking when the set being edited changes
-        if (isEditingExistingSet) {
-            const currentSetKey = `${initialValues?.first}-${initialValues?.second}`;
-            if (previousSetKeyRef.current !== currentSetKey) {
-                hasAutoFocusedForCurrentSetRef.current = false;
-                previousSetKeyRef.current = currentSetKey;
-            }
-        } else {
-            hasAutoFocusedForCurrentSetRef.current = false;
+        setShowWarning(false);
+        if (warningTimeout.current) {
+            clearTimeout(warningTimeout.current);
+            warningTimeout.current = null;
         }
+    }, [mode, initialValues?.first, initialValues?.second, focusTrigger]);
 
-        // Only auto-focus if explicitly requested on load, or for manual interactions (forceFocus)
-        // For loads, only focus if shouldAutoFocusOnLoad is true
-        // For manual interactions (clicking to add movement), use forceFocus
-        const shouldAutoFocus =
-            shouldAutoFocusOnLoad && (
-                (mode === 'double' && (!isEditingExistingSet || !hasAutoFocusedForCurrentSetRef.current)) ||
-                isNewLift ||
-                isNewMovement ||
-                (initialValues != null && isInteractionMode && !isEditingExistingSet)
-            ) ||
-            forceFocus;
-
-        if (shouldAutoFocus) {
-            if (userDismissedKeyboardRef.current) {
-                userDismissedKeyboardRef.current = false;
-                return;
-            }
+    // Only focus when explicitly requested via forceFocus or shouldAutoFocusOnLoad
+    useEffect(() => {
+        if (forceFocus) {
             setTimeout(() => {
                 firstInputRef.current?.focus();
-                if (isEditingExistingSet) {
-                    hasAutoFocusedForCurrentSetRef.current = true;
-                }
             }, 100);
         }
-    }, [mode, firstPlaceholder, initialValues, forceFocus, shouldAutoFocusOnLoad]);
+    }, [forceFocus]);
 
-    // Explicit focus trigger when forceFocus prop is true (for manual interactions)
+    // Auto-focus on initial load when shouldAutoFocusOnLoad is true
     useEffect(() => {
-        if (forceFocus && mode !== 'hidden') {
+        if (shouldAutoFocusOnLoad) {
             setTimeout(() => {
                 firstInputRef.current?.focus();
-            }, 150);
+            }, 100);
         }
-    }, [forceFocus, mode]);
+    }, [shouldAutoFocusOnLoad]);
+
+    // Focus first input when focusTrigger changes (for adding multiple sets)
+    useEffect(() => {
+        if (focusTrigger > 0) {
+            setTimeout(() => {
+                firstInputRef.current?.focus();
+            }, 100);
+        }
+    }, [focusTrigger]);
 
     useEffect(() => {
         const previousInitial = previousInitialValuesRef.current;
@@ -157,6 +135,16 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         const hasFirstChanged = previousInitial?.first !== incomingFirst;
         const hasSecondChanged = previousInitial?.second !== incomingSecond;
 
+        console.log('[DEBUG EntryFooter] initialValues sync effect:', {
+            previousInitial,
+            incomingFirst,
+            incomingSecond,
+            initialProvided,
+            hasFirstChanged,
+            hasSecondChanged,
+            currentFirstValue: firstValue,
+        });
+
         previousInitialValuesRef.current = {
             first: incomingFirst,
             second: incomingSecond,
@@ -164,6 +152,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
 
         if (!initialProvided) {
             if (previousInitial?.first !== undefined || previousInitial?.second !== undefined) {
+                console.log('[DEBUG EntryFooter] Clearing values (no initial provided)');
                 isProgrammaticUpdateRef.current = true;
                 setFirstValue('');
                 setSecondValue('');
@@ -172,16 +161,27 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             return;
         }
 
+        // Set the value if it has changed from previous initial OR if current value doesn't match incoming
+        // This ensures the value is set correctly even on remount
         if (hasFirstChanged && incomingFirst !== undefined) {
+            console.log('[DEBUG EntryFooter] Setting firstValue to:', incomingFirst, '(changed from previous initial)');
+            isProgrammaticUpdateRef.current = true;
+            setFirstValue(incomingFirst);
+            onFirstValueChange?.(incomingFirst);
+        } else if (incomingFirst !== undefined && firstValue !== incomingFirst && previousInitial?.first === undefined) {
+            // Special case: if previousInitial was undefined (component just mounted/remounted)
+            // and the current value doesn't match incoming, set it
+            console.log('[DEBUG EntryFooter] Setting firstValue to:', incomingFirst, '(remount case, current:', firstValue, ')');
             isProgrammaticUpdateRef.current = true;
             setFirstValue(incomingFirst);
             onFirstValueChange?.(incomingFirst);
         }
 
         if (hasSecondChanged && incomingSecond !== undefined) {
+            console.log('[DEBUG EntryFooter] Setting secondValue to:', incomingSecond);
             setSecondValue(incomingSecond);
         }
-    }, [initialValues, onFirstValueChange]);
+    }, [initialValues, onFirstValueChange, firstValue]);
 
     useEffect(() => {
         const keyboardEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -227,10 +227,18 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 onKeyboardDismiss();
             }
 
-            if (!userDismissedKeyboardRef.current) {
+            // Don't clear values if we have initialValues (editing existing item)
+            // or if user explicitly dismissed keyboard
+            if (!userDismissedKeyboardRef.current && !initialValues) {
+                console.log('[DEBUG EntryFooter] Keyboard hide - clearing values (no initialValues)');
                 setFirstValue('');
                 setSecondValue('');
                 onFirstValueChange?.('');
+            } else {
+                console.log('[DEBUG EntryFooter] Keyboard hide - NOT clearing values', {
+                    userDismissedKeyboard: userDismissedKeyboardRef.current,
+                    hasInitialValues: !!initialValues,
+                });
             }
 
             userDismissedKeyboardRef.current = false;
@@ -284,15 +292,9 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             setFirstValue('');
             setSecondValue('');
             onFirstValueChange?.('');
-            setTimeout(() => {
-                firstInputRef.current?.focus();
-            }, 50);
+            // Don't auto-focus here - let the parent control focus via forceFocus prop
         }
     };
-
-    if (mode === 'hidden') {
-        return null;
-    }
 
     const handleGestureEvent = React.useCallback(
         ({ nativeEvent }: { nativeEvent: { translationY: number } }) => {
@@ -353,11 +355,11 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 {showWarning && (
                     <View style={[
                         styles.warningContainer,
-                        { backgroundColor: '#ffebee' }
+                        { backgroundColor: '#ffe5e3' }
                     ]}>
                         <Text style={[
                             styles.warningText,
-                            { color: '#c62828' }
+                            { color: '#ff3b30', fontFamily: 'Schoolbell-Regular' }
                         ]}>
                             {warningMessage}
                         </Text>
@@ -531,14 +533,13 @@ const styles = StyleSheet.create({
         flex: 0.5,
     },
     warningContainer: {
-        padding: 8,
+        padding: 10,
         marginBottom: 8,
         borderRadius: 8,
         alignItems: 'center',
     },
     warningText: {
-        fontSize: 14,
-        fontWeight: '500',
+        fontSize: 16,
     },
     suggestionsContainer: {
         flexDirection: 'row',
