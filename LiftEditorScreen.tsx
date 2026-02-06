@@ -965,8 +965,21 @@ const LiftEditorScreen: React.FC = () => {
         if (!query) {
             return true;
         }
-        const words = splitIntoWords(text);
-        return words.some(word => word.startsWith(query));
+        const targetWords = splitIntoWords(text);
+        const queryWords = splitIntoWords(query);
+        if (queryWords.length === 0) {
+            return true;
+        }
+        // Each query word must match the start of a distinct target word
+        const used = new Array(targetWords.length).fill(false);
+        return queryWords.every(qWord => {
+            const idx = targetWords.findIndex(
+                (tWord, i) => !used[i] && tWord.startsWith(qWord)
+            );
+            if (idx === -1) return false;
+            used[idx] = true;
+            return true;
+        });
     };
 
     const titleSuggestions = React.useMemo(() => {
@@ -1030,20 +1043,8 @@ const LiftEditorScreen: React.FC = () => {
             ...priority2,
         ];
 
-        // Take top 3
-        const top3 = allSuggestions.slice(0, 3);
-
-        // Reorder for display: 1st in middle, 2nd on left, 3rd on right
-        // So we want: [2nd, 1st, 3rd] to display as: 2nd (left), 1st (middle), 3rd (right)
-        if (top3.length === 0) {
-            return [];
-        } else if (top3.length === 1) {
-            return [top3[0]];
-        } else if (top3.length === 2) {
-            return [top3[1], top3[0]]; // 2nd on left, 1st in middle
-        } else {
-            return [top3[1], top3[0], top3[2]]; // 2nd, 1st, 3rd
-        }
+        // Take top 3, displayed left to right in priority order
+        return allSuggestions.slice(0, 3);
     }, [suggestionContext, firstInputValue, orderedLiftTitles]);
 
     const movementSuggestions = React.useMemo(() => {
@@ -1070,15 +1071,28 @@ const LiftEditorScreen: React.FC = () => {
 
         const seen = new Set<string>();
 
-        // Process all lifts
+        // Partition lifts into name-matched and others
+        const nameMatchedLifts: Lift[] = [];
+        const otherLifts: Lift[] = [];
+
         Object.values(allLifts).forEach((liftItem) => {
             if (liftItem.id === lift.id) {
                 return; // Skip current lift
             }
-
             const isNameMatched = liftItem.title &&
                 liftItem.title.trim().toLowerCase() === normalizedCurrentTitle;
+            if (isNameMatched) {
+                nameMatchedLifts.push(liftItem);
+            } else {
+                otherLifts.push(liftItem);
+            }
+        });
 
+        // Sort name-matched lifts by date descending (most recent first)
+        nameMatchedLifts.sort((a, b) => b.date.localeCompare(a.date));
+
+        // Build priority 1: walk most-recent-first, movements top-to-bottom
+        nameMatchedLifts.forEach((liftItem) => {
             liftItem.movements.forEach((movement) => {
                 const trimmed = movement.name.trim();
                 if (!trimmed) {
@@ -1100,13 +1114,38 @@ const LiftEditorScreen: React.FC = () => {
                 seen.add(key);
 
                 if (isExisting) {
-                    // Movements already in current lift go to lowest priority
                     priority4.push(trimmed);
-                } else if (isNameMatched) {
-                    // Priority 1: from name-matched lifts, not used in current lift
-                    priority1.push(trimmed);
                 } else {
-                    // Priority 2: from other-named lifts, not used in current lift
+                    priority1.push(trimmed);
+                }
+            });
+        });
+
+        // Build priority 2 from non-name-matched lifts
+        otherLifts.forEach((liftItem) => {
+            liftItem.movements.forEach((movement) => {
+                const trimmed = movement.name.trim();
+                if (!trimmed) {
+                    return;
+                }
+
+                const key = trimmed.toLowerCase();
+                if (seen.has(key)) {
+                    return; // Already processed this movement
+                }
+
+                const isExisting = existingNames.has(key);
+                const matches = matchesQuery(trimmed, query);
+
+                if (!matches) {
+                    return; // Doesn't match query
+                }
+
+                seen.add(key);
+
+                if (isExisting) {
+                    priority4.push(trimmed);
+                } else {
                     priority2.push(trimmed);
                 }
             });
@@ -1139,8 +1178,7 @@ const LiftEditorScreen: React.FC = () => {
             }
         });
 
-        // Sort each priority alphabetically
-        priority1.sort((a, b) => a.localeCompare(b));
+        // priority1 is already in recency + position order — do not sort it
         priority2.sort((a, b) => a.localeCompare(b));
         priority3.sort((a, b) => a.localeCompare(b));
         priority4.sort((a, b) => a.localeCompare(b));
@@ -1153,20 +1191,8 @@ const LiftEditorScreen: React.FC = () => {
             ...priority4,
         ];
 
-        // Take top 3
-        const top3 = allSuggestions.slice(0, 3);
-
-        // Reorder for display: 1st in middle, 2nd on left, 3rd on right
-        // So we want: [2nd, 1st, 3rd] to display as: 2nd (left), 1st (middle), 3rd (right)
-        if (top3.length === 0) {
-            return [];
-        } else if (top3.length === 1) {
-            return [top3[0]];
-        } else if (top3.length === 2) {
-            return [top3[1], top3[0]]; // 2nd on left, 1st in middle
-        } else {
-            return [top3[1], top3[0], top3[2]]; // 2nd, 1st, 3rd
-        }
+        // Take top 3, displayed left to right in priority order
+        return allSuggestions.slice(0, 3);
     }, [
         suggestionContext,
         firstInputValue,
