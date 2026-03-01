@@ -11,6 +11,7 @@ import {
     Dimensions,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
+import Svg, { Path } from 'react-native-svg';
 
 interface LiftPreview {
     date: string;
@@ -23,6 +24,7 @@ interface LiftPreviewListProps {
     onSelectLift: (liftId: string) => void;
     onDeleteLift: (liftId: string) => void;
     onCreateNewLift: () => void;
+    onOpenCharts: () => void;
 }
 
 const ACTION_WIDTH = 80;
@@ -32,11 +34,37 @@ const PLUS_BUTTON_HORIZONTAL_PADDING = 8;
 const PLUS_EFFECTIVE_WIDTH = PLUS_ICON_WIDTH + PLUS_BUTTON_HORIZONTAL_PADDING * 2;
 const ARROW_RIGHT_MARGIN = PLUS_EFFECTIVE_WIDTH / 2; // center of the plus button
 
+const ChartIcon = () => (
+    <Svg width={26} height={26} viewBox="0 0 26 26" fill="none">
+        <Path
+            d="M4 20 Q8 18, 10 14 Q12 10, 15 12 Q18 14, 20 6 Q21 4, 22 3"
+            stroke="#333"
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+        />
+        <Path
+            d="M4 22 L4 4"
+            stroke="#333"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+        />
+        <Path
+            d="M4 22 L23 22"
+            stroke="#333"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+        />
+    </Svg>
+);
+
 const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     lifts,
     onSelectLift,
     onDeleteLift,
     onCreateNewLift,
+    onOpenCharts,
 }) => {
     const swipeableRefs = React.useRef<Map<string, Swipeable>>(new Map());
 
@@ -133,6 +161,12 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     return (
         <View style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
             <View style={styles.header}>
+                <TouchableOpacity
+                    style={styles.chartButton}
+                    onPress={onOpenCharts}
+                >
+                    <ChartIcon />
+                </TouchableOpacity>
                 <Text style={[styles.headerTitle, { color: '#333' }]}>
                     Lifts
                 </Text>
@@ -188,6 +222,12 @@ const styles = StyleSheet.create({
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
         textAlign: 'center',
+    },
+    chartButton: {
+        position: 'absolute',
+        left: 16,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
     },
     newButton: {
         position: 'absolute',

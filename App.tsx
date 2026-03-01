@@ -9,6 +9,7 @@ import { RootStackParamList } from './types';
 import { LOCAL_STORAGE_KEYS, syncFromDatabase } from './utils';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
+import ChartScreen from './ChartScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RNBootSplash from 'react-native-bootsplash';
@@ -170,6 +171,17 @@ export default function App() {
                   animation: 'slide_from_right',
                   gestureEnabled: true,
                   gestureDirection: 'horizontal',
+                  fullScreenGestureEnabled: true,
+                }}
+              />
+              <Stack.Screen
+                name="Charts"
+                component={ChartScreen}
+                options={{
+                  headerShown: false,
+                  animation: 'slide_from_left',
+                  animationMatchesGesture: true,
+                  gestureEnabled: true,
                   fullScreenGestureEnabled: true,
                 }}
               />

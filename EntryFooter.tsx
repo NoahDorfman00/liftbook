@@ -22,6 +22,7 @@ interface EntryFooterProps {
     secondPlaceholder?: string;
     onKeyboardDismiss?: () => void;
     suggestions?: string[];
+    lastTimeNote?: string | null;
     onSuggestionSelect?: (suggestion: string) => void;
     onFirstValueChange?: (value: string) => void;
     onFirstFieldFocus?: () => void;
@@ -43,6 +44,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     secondPlaceholder = 'Enter reps...',
     onKeyboardDismiss,
     suggestions = [],
+    lastTimeNote,
     onSuggestionSelect,
     onFirstValueChange,
     onFirstFieldFocus,
@@ -500,6 +502,11 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             ))}
                         </View>
                     )}
+                {mode === 'double' && !!lastTimeNote && (
+                    <View style={styles.lastTimeContainer}>
+                        <Text style={styles.lastTimeText}>{lastTimeNote}</Text>
+                    </View>
+                )}
             </Animated.View>
         </PanGestureHandler>
     );
@@ -560,6 +567,17 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontFamily: 'Schoolbell',
         color: '#333',
+        textAlign: 'center',
+    },
+    lastTimeContainer: {
+        paddingHorizontal: 32,
+        paddingBottom: 8,
+        alignItems: 'center',
+    },
+    lastTimeText: {
+        fontSize: 16,
+        fontFamily: 'Schoolbell',
+        color: '#888',
         textAlign: 'center',
     },
 });

@@ -85,6 +85,10 @@ const LiftPreviewListScreen: React.FC = () => {
         navigation.navigate('LiftEditor', {});
     };
 
+    const handleOpenCharts = () => {
+        navigation.navigate('Charts');
+    };
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
             <LiftPreviewList
@@ -92,6 +96,7 @@ const LiftPreviewListScreen: React.FC = () => {
                 onSelectLift={handleSelectLift}
                 onDeleteLift={handleDeleteLift}
                 onCreateNewLift={handleCreateNewLift}
+                onOpenCharts={handleOpenCharts}
             />
         </SafeAreaView>
     );

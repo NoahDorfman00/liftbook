@@ -930,6 +930,48 @@ const LiftEditorScreen: React.FC = () => {
         return titles;
     }, [allLifts]);
 
+    const cycleSuggestions = React.useMemo(() => {
+        const liftsArray = Object.values(allLifts);
+        const sorted = liftsArray
+            .filter(l => l?.title?.trim())
+            .sort((a, b) => getLiftSortKey(a) - getLiftSortKey(b));
+
+        const mostRecentIdx = [...sorted]
+            .reverse()
+            .findIndex(l => l.id !== lift.id);
+        if (mostRecentIdx === -1) return [];
+        const lastIdx = sorted.length - 1 - mostRecentIdx;
+
+        const lastTitle = sorted[lastIdx].title.trim().toLowerCase();
+
+        // Find the previous occurrence of the same title
+        let prevIdx = -1;
+        for (let i = lastIdx - 1; i >= 0; i--) {
+            if (sorted[i].title.trim().toLowerCase() === lastTitle) {
+                prevIdx = i;
+                break;
+            }
+        }
+
+        // Slice between previous occurrence and most recent (exclusive on both ends),
+        // or take everything before if the title only appears once
+        const sliceStart = prevIdx === -1 ? 0 : prevIdx + 1;
+        const between = sorted.slice(sliceStart, lastIdx);
+
+        const seen = new Set<string>();
+        const titles: string[] = [];
+        between.forEach(l => {
+            const trimmed = l.title.trim();
+            const key = trimmed.toLowerCase();
+            if (key === lastTitle) return;
+            if (seen.has(key)) return;
+            seen.add(key);
+            titles.push(trimmed);
+        });
+
+        return titles;
+    }, [allLifts, lift.id]);
+
     const suggestionContext = React.useMemo<'title' | 'movement' | 'weight' | null>(() => {
         // Weight suggestions when editing a set (first field of double mode)
         if (entryMode === 'double' && editingTarget === 'set') {
@@ -990,6 +1032,18 @@ const LiftEditorScreen: React.FC = () => {
         const query = firstInputValue.trim().toLowerCase();
         const seen = new Set<string>();
 
+        // Priority 0: Cycle-predicted next titles (based on what historically follows the most recent lift)
+        const priority0: string[] = [];
+        cycleSuggestions.forEach((title) => {
+            const trimmed = title.trim();
+            if (!trimmed) return;
+            const key = trimmed.toLowerCase();
+            if (seen.has(key)) return;
+            if (!matchesQuery(trimmed, query)) return;
+            seen.add(key);
+            priority0.push(trimmed);
+        });
+
         // Priority 1: User saved lift titles (already sorted by most recent to least recent)
         const priority1: string[] = [];
         orderedLiftTitles.forEach((title) => {
@@ -1039,13 +1093,14 @@ const LiftEditorScreen: React.FC = () => {
 
         // Combine priorities in order
         const allSuggestions = [
+            ...priority0,
             ...priority1,
             ...priority2,
         ];
 
         // Take top 3, displayed left to right in priority order
         return allSuggestions.slice(0, 3);
-    }, [suggestionContext, firstInputValue, orderedLiftTitles]);
+    }, [suggestionContext, firstInputValue, orderedLiftTitles, cycleSuggestions]);
 
     const movementSuggestions = React.useMemo(() => {
         if (suggestionContext !== 'movement') {
@@ -1204,152 +1259,72 @@ const LiftEditorScreen: React.FC = () => {
         editingMovementIndex,
     ]);
 
-    const weightSuggestions = React.useMemo(() => {
-        if (suggestionContext !== 'weight') {
-            return [];
-        }
-
+    const lastTimeNote = React.useMemo<string | null>(() => {
         if (
+            editingTarget !== 'set' ||
             editingMovementIndex == null ||
             editingMovementIndex < 0 ||
             editingMovementIndex >= lift.movements.length
         ) {
-            return [];
+            return null;
         }
 
         const currentMovement = lift.movements[editingMovementIndex];
         const movementName = currentMovement.name.trim();
         if (!movementName) {
-            return [];
+            return null;
         }
         const normalizedName = movementName.toLowerCase();
 
-        type WeightedSet = {
-            weight: number;
-            sortKey: number;
-        };
-
-        // Find the most recent previous lift (before current lift in time) that has this movement
         const currentLiftSortKey = getLiftSortKey(lift);
         let previousLift: Lift | null = null;
         let previousLiftSortKey = -1;
 
         const allLiftsArray = Object.values(allLifts);
         for (const liftItem of allLiftsArray) {
-            // Skip the current lift
             if (liftItem.id === lift.id) {
                 continue;
             }
 
             const liftSortKey = getLiftSortKey(liftItem);
-            // Only consider lifts that occurred BEFORE the current lift
             if (liftSortKey >= currentLiftSortKey) {
                 continue;
             }
 
-            // Check if this lift has the movement
             const hasMovement = liftItem.movements.some(
                 (movement: Movement) => movement.name.trim().toLowerCase() === normalizedName
             );
 
-            if (hasMovement) {
-                // Keep track of the most recent lift (highest sortKey) with this movement
-                // that occurred before the current lift
-                if (liftSortKey > previousLiftSortKey) {
-                    previousLiftSortKey = liftSortKey;
-                    previousLift = liftItem;
+            if (hasMovement && liftSortKey > previousLiftSortKey) {
+                previousLiftSortKey = liftSortKey;
+                previousLift = liftItem;
+            }
+        }
+
+        if (!previousLift) {
+            return null;
+        }
+
+        const setParts: string[] = [];
+        for (const movement of previousLift.movements) {
+            if (movement.name.trim().toLowerCase() !== normalizedName) {
+                continue;
+            }
+            for (const set of movement.sets) {
+                const w = parseFloat(set.weight);
+                const r = parseFloat(set.reps);
+                if (Number.isFinite(w) && w > 0 && Number.isFinite(r) && r > 0) {
+                    setParts.push(`${set.weight}x${set.reps}`);
                 }
             }
         }
 
-        // Only collect weights from the most recent previous lift
-        const weightedSets: WeightedSet[] = [];
-        if (previousLift !== null) {
-            const liftToUse = previousLift;
-            liftToUse.movements.forEach((movement: Movement) => {
-                if (movement.name.trim().toLowerCase() !== normalizedName) {
-                    return;
-                }
-                movement.sets.forEach((set: Set, setIndex: number) => {
-                    const w = parseFloat(set.weight);
-                    if (!Number.isFinite(w) || w <= 0) {
-                        return;
-                    }
-                    weightedSets.push({
-                        weight: w,
-                        // Add a small per-set offset so later sets in the same lift are treated as more recent
-                        sortKey: previousLiftSortKey * 1000 + setIndex,
-                    });
-                });
-            });
+        if (setParts.length === 0) {
+            return null;
         }
 
-        if (weightedSets.length === 0) {
-            return [];
-        }
-
-        // Find the tightest cluster of weights (working sets that are close together).
-        // This excludes warmups, drop sets, and max attempts that are far from the main cluster.
-        const byWeight = [...weightedSets].sort((a, b) => a.weight - b.weight);
-
-        if (byWeight.length === 0) {
-            return [];
-        }
-
-        // Find the tightest cluster by looking for the smallest range that contains
-        // at least 2 consecutive weights. Prioritize larger clusters when ranges are similar.
-        let bestCluster: typeof byWeight = [];
-        let bestRange = Infinity;
-
-        // Try all possible starting points
-        for (let start = 0; start < byWeight.length; start++) {
-            // Try clusters of size 2, 3, 4, etc. starting from this point
-            for (let end = start + 1; end <= byWeight.length; end++) {
-                const cluster = byWeight.slice(start, end);
-                if (cluster.length < 2) continue;
-
-                const range = cluster[cluster.length - 1].weight - cluster[0].weight;
-                const rangePerItem = range / cluster.length; // Normalize by cluster size
-
-                // Prefer tighter clusters (smaller range per item), but if ranges are similar,
-                // prefer larger clusters (more values)
-                if (rangePerItem < bestRange ||
-                    (Math.abs(rangePerItem - bestRange) < 0.1 && cluster.length > bestCluster.length)) {
-                    bestRange = rangePerItem;
-                    bestCluster = cluster;
-                }
-            }
-        }
-
-        // If we found a cluster, use it; otherwise use all weights
-        const workingWeights = bestCluster.length >= 2 ? bestCluster : byWeight;
-
-        // Calculate bounds based on the cluster's range
-        const clusterMin = workingWeights[0].weight;
-        const clusterMax = workingWeights[workingWeights.length - 1].weight;
-        const clusterRange = clusterMax - clusterMin;
-
-        // Allow a small buffer around the cluster (10% of the range on each side)
-        const buffer = Math.max(clusterRange * 0.1, 2.5); // At least 2.5 units buffer
-        const minAllowed = clusterMin - buffer;
-        const maxAllowed = clusterMax + buffer;
-
-        const filtered = weightedSets.filter(
-            (item) => item.weight >= minAllowed && item.weight <= maxAllowed
-        );
-
-        // Only use filtered weights - don't fall back to all weights if filtered is empty
-        if (filtered.length === 0) {
-            return [];
-        }
-
-        const candidates = filtered.sort(
-            (a, b) => b.sortKey - a.sortKey
-        );
-
-        const best = candidates[0];
-        return best ? [best.weight.toString()] : [];
-    }, [allLifts, editingMovementIndex, lift.movements, suggestionContext]);
+        return `last time: ${setParts.join(', ')}`;
+    }, [allLifts, editingMovementIndex, editingTarget, lift]);
 
     const suggestionsForInput = React.useMemo(() => {
         if (suggestionContext === 'title') {
@@ -1358,11 +1333,8 @@ const LiftEditorScreen: React.FC = () => {
         if (suggestionContext === 'movement') {
             return movementSuggestions;
         }
-        if (suggestionContext === 'weight') {
-            return weightSuggestions;
-        }
         return [];
-    }, [movementSuggestions, suggestionContext, titleSuggestions, weightSuggestions]);
+    }, [movementSuggestions, suggestionContext, titleSuggestions]);
 
     // Track the most recent value to detect if this is a user input or a sync
     const lastFirstInputValueRef = useRef<string>('');
@@ -1919,6 +1891,7 @@ const LiftEditorScreen: React.FC = () => {
                                 secondPlaceholder="Enter reps..."
                                 onKeyboardDismiss={handleKeyboardDismiss}
                                 suggestions={suggestionsForInput}
+                                lastTimeNote={lastTimeNote}
                                 onFirstValueChange={handleFirstValueChange}
                                 onFirstFieldFocus={handleEntryFooterFocus}
                                 forceFocus={
