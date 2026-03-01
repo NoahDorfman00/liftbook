@@ -314,12 +314,9 @@ const ChartScreen: React.FC = () => {
         <View style={[styles.safeArea, { paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]}>
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={openPicker} style={styles.titleButton}>
-                        <Text style={styles.titleText} numberOfLines={1}>
-                            {selectedMovement || 'Select Movement'}
-                        </Text>
-                        <Text style={styles.titleCaret}>▾</Text>
-                    </TouchableOpacity>
+                    <View style={styles.headerCenter}>
+                        <Text style={styles.headerTitle}>Charts</Text>
+                    </View>
                     <TouchableOpacity
                         style={styles.backButton}
                         onPress={() => navigation.goBack()}
@@ -332,6 +329,11 @@ const ChartScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.chartContainer}>
+                    <TouchableOpacity onPress={openPicker}>
+                        <Text style={styles.chartTitle} numberOfLines={1}>
+                            {selectedMovement || 'Select Movement'}
+                        </Text>
+                    </TouchableOpacity>
                     {hasData ? (
                         <Svg width={chartWidth} height={chartHeight}>
                             {/* Grid lines */}
@@ -455,24 +457,23 @@ const ChartScreen: React.FC = () => {
                             </Text>
                         </View>
                     )}
+                    {hasData && (
+                        <View style={styles.legend}>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendSwatch, { backgroundColor: '#333' }]} />
+                                <Text style={styles.legendLabel}>max</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendSwatch, { backgroundColor: '#777' }]} />
+                                <Text style={styles.legendLabel}>avg</Text>
+                            </View>
+                            <View style={styles.legendItem}>
+                                <View style={[styles.legendSwatch, { backgroundColor: '#bbb' }]} />
+                                <Text style={styles.legendLabel}>min</Text>
+                            </View>
+                        </View>
+                    )}
                 </View>
-
-                {hasData && (
-                    <View style={styles.legend}>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendSwatch, { backgroundColor: '#333' }]} />
-                            <Text style={styles.legendLabel}>max</Text>
-                        </View>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendSwatch, { backgroundColor: '#777' }]} />
-                            <Text style={styles.legendLabel}>avg</Text>
-                        </View>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendSwatch, { backgroundColor: '#bbb' }]} />
-                            <Text style={styles.legendLabel}>min</Text>
-                        </View>
-                    </View>
-                )}
 
                 <View style={styles.rangeBar}>
                     {TIME_RANGES.map(({ label, value }) => (
@@ -561,7 +562,7 @@ const styles = StyleSheet.create({
     },
     header: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'flex-end',
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -569,27 +570,19 @@ const styles = StyleSheet.create({
         borderBottomColor: '#e0e0e0',
         backgroundColor: '#f5f5f5',
     },
-    titleButton: {
-        flexDirection: 'row',
+    headerCenter: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
         alignItems: 'center',
-        maxWidth: SCREEN_WIDTH - 120,
     },
-    titleText: {
-        fontSize: 28,
+    headerTitle: {
+        fontSize: 32,
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
         color: '#333',
     },
-    titleCaret: {
-        fontSize: 18,
-        fontFamily: 'Schoolbell',
-        color: '#666',
-        marginLeft: 6,
-        marginTop: 4,
-    },
     backButton: {
-        position: 'absolute',
-        right: 16,
         paddingHorizontal: 8,
         paddingVertical: 4,
     },
@@ -597,6 +590,14 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         resizeMode: 'contain',
+    },
+    chartTitle: {
+        fontSize: 28,
+        fontFamily: 'Schoolbell',
+        fontWeight: 'bold',
+        color: '#333',
+        textAlign: 'center',
+        paddingBottom: 8,
     },
     chartContainer: {
         flex: 1,
@@ -618,7 +619,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'center',
         gap: 24,
-        paddingVertical: 8,
+        paddingTop: 4,
         paddingHorizontal: 16,
     },
     legendItem: {

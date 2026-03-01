@@ -167,9 +167,11 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                 >
                     <ChartIcon />
                 </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: '#333' }]}>
-                    Lifts
-                </Text>
+                <View style={styles.headerCenter}>
+                    <Text style={[styles.headerTitle, { color: '#333' }]}>
+                        Lifts
+                    </Text>
+                </View>
                 <TouchableOpacity
                     style={styles.newButton}
                     onPress={onCreateNewLift}
@@ -209,13 +211,19 @@ const styles = StyleSheet.create({
     },
     header: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: '#e0e0e0',
         backgroundColor: '#f5f5f5',
+    },
+    headerCenter: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
     },
     headerTitle: {
         fontSize: 32,
@@ -224,14 +232,10 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     chartButton: {
-        position: 'absolute',
-        left: 16,
         paddingHorizontal: 8,
         paddingVertical: 4,
     },
     newButton: {
-        position: 'absolute',
-        right: 16,
         paddingHorizontal: 8,
         paddingVertical: 4,
     },
