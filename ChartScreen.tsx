@@ -528,6 +528,7 @@ const ChartScreen: React.FC = () => {
                                 data={filteredMovements}
                                 keyExtractor={(item) => item}
                                 keyboardShouldPersistTaps="handled"
+                                automaticallyAdjustKeyboardInsets
                                 renderItem={({ item }) => (
                                     <TouchableOpacity
                                         style={styles.movementItem}
