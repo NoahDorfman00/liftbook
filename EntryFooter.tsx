@@ -55,15 +55,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const insets = useSafeAreaInsets();
     const [firstValue, setFirstValue] = useState(initialValues?.first || '');
     const [secondValue, setSecondValue] = useState(initialValues?.second || '');
-    
-    // Debug: Log initial mount values and value changes
-    React.useEffect(() => {
-        console.log('[DEBUG EntryFooter] Component mounted/remounted with initialValues:', initialValues, 'firstValue:', firstValue);
-    }, []);
-    
-    React.useEffect(() => {
-        console.log('[DEBUG EntryFooter] firstValue changed to:', firstValue);
-    }, [firstValue]);
     const [showWarning, setShowWarning] = useState(false);
     const [warningMessage, setWarningMessage] = useState('');
     const firstInputRef = useRef<TextInput>(null);
@@ -137,16 +128,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         const hasFirstChanged = previousInitial?.first !== incomingFirst;
         const hasSecondChanged = previousInitial?.second !== incomingSecond;
 
-        console.log('[DEBUG EntryFooter] initialValues sync effect:', {
-            previousInitial,
-            incomingFirst,
-            incomingSecond,
-            initialProvided,
-            hasFirstChanged,
-            hasSecondChanged,
-            currentFirstValue: firstValue,
-        });
-
         previousInitialValuesRef.current = {
             first: incomingFirst,
             second: incomingSecond,
@@ -154,7 +135,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
 
         if (!initialProvided) {
             if (previousInitial?.first !== undefined || previousInitial?.second !== undefined) {
-                console.log('[DEBUG EntryFooter] Clearing values (no initial provided)');
                 isProgrammaticUpdateRef.current = true;
                 setFirstValue('');
                 setSecondValue('');
@@ -166,21 +146,18 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         // Set the value if it has changed from previous initial OR if current value doesn't match incoming
         // This ensures the value is set correctly even on remount
         if (hasFirstChanged && incomingFirst !== undefined) {
-            console.log('[DEBUG EntryFooter] Setting firstValue to:', incomingFirst, '(changed from previous initial)');
             isProgrammaticUpdateRef.current = true;
             setFirstValue(incomingFirst);
             onFirstValueChange?.(incomingFirst);
         } else if (incomingFirst !== undefined && firstValue !== incomingFirst && previousInitial?.first === undefined) {
             // Special case: if previousInitial was undefined (component just mounted/remounted)
             // and the current value doesn't match incoming, set it
-            console.log('[DEBUG EntryFooter] Setting firstValue to:', incomingFirst, '(remount case, current:', firstValue, ')');
             isProgrammaticUpdateRef.current = true;
             setFirstValue(incomingFirst);
             onFirstValueChange?.(incomingFirst);
         }
 
         if (hasSecondChanged && incomingSecond !== undefined) {
-            console.log('[DEBUG EntryFooter] Setting secondValue to:', incomingSecond);
             setSecondValue(incomingSecond);
         }
     }, [initialValues, onFirstValueChange, firstValue]);
@@ -232,15 +209,9 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             // Don't clear values if we have initialValues (editing existing item)
             // or if user explicitly dismissed keyboard
             if (!userDismissedKeyboardRef.current && !initialValues) {
-                console.log('[DEBUG EntryFooter] Keyboard hide - clearing values (no initialValues)');
                 setFirstValue('');
                 setSecondValue('');
                 onFirstValueChange?.('');
-            } else {
-                console.log('[DEBUG EntryFooter] Keyboard hide - NOT clearing values', {
-                    userDismissedKeyboard: userDismissedKeyboardRef.current,
-                    hasInitialValues: !!initialValues,
-                });
             }
 
             userDismissedKeyboardRef.current = false;

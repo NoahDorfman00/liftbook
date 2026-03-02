@@ -2,11 +2,9 @@ import * as React from 'react';
 import { View, Text, useColorScheme } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { initializeApp } from 'firebase/app';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FIREBASE_KEY } from '@env';
 import { RootStackParamList } from './types';
-import { LOCAL_STORAGE_KEYS, syncFromDatabase } from './utils';
+import { LOCAL_STORAGE_KEYS } from './utils';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
@@ -20,55 +18,16 @@ declare global {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-// Initialize Firebase first, before any React components
-const firebaseConfig = {
-  apiKey: FIREBASE_KEY,
-  authDomain: "jackedtracker.firebaseapp.com",
-  databaseURL: "https://jackedtracker-default-rtdb.firebaseio.com",
-  projectId: "jackedtracker",
-  storageBucket: "jackedtracker.firebasestorage.app",
-  messagingSenderId: "801417628220",
-  appId: "1:801417628220:web:5e1d79d8ec2422d6211139",
-  measurementId: "G-Q5C63J4TRW"
-};
-
-// Move Firebase initialization inside a try-catch
-const initFirebase = () => {
-  try {
-    const app = initializeApp(firebaseConfig);
-    return app;
-  } catch (error) {
-    console.error('Firebase initialization failed:', error);
-    return null;
-  }
-};
-
-// TODO: Replace this with real auth once implemented.
-// For now, we always behave as logged-out so no Firebase sync occurs.
-const getCurrentUserId = (): string | null => {
-  return null;
-};
-
 const initApp = async () => {
   try {
-    // Initialize Firebase first
-    const firebaseApp = initFirebase();
-    if (!firebaseApp) {
-      console.error('Failed to initialize Firebase, continuing with local storage only');
-    }
-
     // Initialize AsyncStorage
     try {
-      const liftsData = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
-      const userId = getCurrentUserId();
-      if (!liftsData && userId) {
-        await syncFromDatabase(userId);
-      }
+      await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
     } catch (storageError) {
       console.error('AsyncStorage error:', storageError);
     }
 
-    // Set initial date (this doesn't depend on storage)
+    // Set initial date
     const currentDate = new Date();
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
@@ -129,7 +88,7 @@ export default function App() {
         RNBootSplash.hide({ fade: true });
         setIsInitialized(true);
       } catch (error) {
-        console.error('❌ App initialization failed with error:', error);
+        console.error('App initialization failed:', error);
         // Still hide splash screen even if initialization fails
         RNBootSplash.hide({ fade: true });
         setIsInitialized(true);

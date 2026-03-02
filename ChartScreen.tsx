@@ -169,30 +169,42 @@ function aggregateChartData(
 }
 
 function getAllMovementNames(allLifts: { [id: string]: Lift }): string[] {
-    const seen = new Set<string>();
-    const names: string[] = [];
+    const lastUsed = new Map<string, string>(); // lowercase name -> most recent date
+    const displayName = new Map<string, string>(); // lowercase name -> original casing
 
-    for (const lift of Object.values(allLifts)) {
+    const liftsArray = Object.values(allLifts);
+    liftsArray.sort((a, b) => a.date.localeCompare(b.date));
+
+    for (const lift of liftsArray) {
         for (const movement of lift.movements) {
             const trimmed = movement.name.trim();
             if (!trimmed) continue;
             const key = trimmed.toLowerCase();
-            if (seen.has(key)) continue;
-            seen.add(key);
-            names.push(trimmed);
+            displayName.set(key, trimmed);
+            const prev = lastUsed.get(key);
+            if (!prev || lift.date > prev) {
+                lastUsed.set(key, lift.date);
+            }
         }
     }
 
     for (const defaultMov of DEFAULT_MOVEMENTS) {
         const key = defaultMov.trim().toLowerCase();
-        if (!seen.has(key)) {
-            seen.add(key);
-            names.push(defaultMov.trim());
+        if (!lastUsed.has(key)) {
+            displayName.set(key, defaultMov.trim());
         }
     }
 
-    names.sort((a, b) => a.localeCompare(b));
-    return names;
+    const usedNames = Array.from(lastUsed.entries())
+        .sort((a, b) => b[1].localeCompare(a[1]))
+        .map(([key]) => displayName.get(key)!);
+
+    const unusedNames = Array.from(displayName.keys())
+        .filter(key => !lastUsed.has(key))
+        .sort((a, b) => a.localeCompare(b))
+        .map(key => displayName.get(key)!);
+
+    return [...usedNames, ...unusedNames];
 }
 
 function buildLinePath(

@@ -25,9 +25,6 @@ import { RootStackParamList } from './types';
 import { retrieveLift, retrieveLifts, saveLiftLocally, deleteLiftLocally } from './utils';
 import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
 
-// Toggle to show/hide debug outlines for alignment debugging
-const DEBUG_OUTLINES_ENABLED = false;
-
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
 
@@ -427,7 +424,6 @@ const LiftEditorScreen: React.FC = () => {
     useEffect(() => {
         if (pendingRepBoxResetKeyIncrementRef.current && (editingTarget === 'title' || editingTarget === 'movementName')) {
             pendingRepBoxResetKeyIncrementRef.current = false;
-            console.log('[DEBUG] Incrementing entryFooterResetKey after state update, editingTarget:', editingTarget);
             setEntryFooterResetKey(prev => prev + 1);
         }
     }, [editingTarget]);
@@ -587,16 +583,6 @@ const LiftEditorScreen: React.FC = () => {
                     editingTarget === 'movementName' &&
                     movementExists;
 
-                console.log('[DEBUG] handleEntrySubmit - movement check:', {
-                    editingTarget,
-                    editingMovementIndex,
-                    movementsLength: lift.movements.length,
-                    isAddingNewMovement,
-                    movementExists,
-                    isExistingMovement,
-                    movements: lift.movements.map((m, i) => ({ index: i, name: m.name, setsCount: m.sets.length })),
-                });
-
                 if (isExistingMovement) {
                     const newLift = {
                         ...lift,
@@ -610,14 +596,9 @@ const LiftEditorScreen: React.FC = () => {
                     // Check if movement has no sets - if so, start set entry
                     const updatedMovement = newLift.movements[editingMovementIndex];
                     const hasNoSets = updatedMovement && updatedMovement.sets.length === 0;
-                    console.log('[DEBUG] handleEntrySubmit - after updating movement:', {
-                        updatedMovement: updatedMovement ? { name: updatedMovement.name, setsCount: updatedMovement.sets.length } : null,
-                        hasNoSets,
-                    });
                     setIsAddingNewMovement(false);
                     if (hasNoSets) {
                         // Movement has no sets - start set entry
-                        console.log('[DEBUG] handleEntrySubmit - starting set entry for movement with no sets');
                         isTransitioningToSetEntryRef.current = true;
                         setEditingSetIndex(0);
                         setEditingTarget('set');
@@ -631,7 +612,6 @@ const LiftEditorScreen: React.FC = () => {
                         }, 100);
                     } else {
                         // Movement has sets - dismiss footer but keep it visible
-                        console.log('[DEBUG] handleEntrySubmit - dismissing footer (movement has sets)');
                         setEditingTarget('none');
                         setEditingMovementIndex(null);
                         setEntryMode('single');
@@ -645,7 +625,6 @@ const LiftEditorScreen: React.FC = () => {
                         }, 300);
                     }
                 } else {
-                    console.log('[DEBUG] handleEntrySubmit - adding new movement');
                     const newLift = {
                         ...lift,
                         movements: [...lift.movements, { name: first, sets: [] }],
@@ -828,13 +807,6 @@ const LiftEditorScreen: React.FC = () => {
     };
 
     const handleKeyboardDismiss = () => {
-        console.log('[DEBUG] handleKeyboardDismiss called', {
-            isSubmitting: isSubmitting.current,
-            isTransitioningToSetRef: isTransitioningToSetRef.current,
-            isTransitioningToSetEntryRef: isTransitioningToSetEntryRef.current,
-            isIntentionalEditTransitionRef: isIntentionalEditTransitionRef.current,
-            isTransitioningFromRepBoxRef: isTransitioningFromRepBoxRef.current,
-        });
         // Only reset states if we're not actively editing and not transitioning to set editing
         // Also don't reset if we're in an intentional edit transition (clicking to edit something)
         // or transitioning from rep box to movement/title, or transitioning to set entry
@@ -843,14 +815,11 @@ const LiftEditorScreen: React.FC = () => {
             !isTransitioningToSetEntryRef.current &&
             !isIntentionalEditTransitionRef.current &&
             !isTransitioningFromRepBoxRef.current) {
-            console.log('[DEBUG] handleKeyboardDismiss - resetting to none');
             setEntryMode('single');
             setEditingMovementIndex(null);
             setEditingSetIndex(null);
             setEditingTarget('none');
             setIsAddingNewMovement(false);
-        } else {
-            console.log('[DEBUG] handleKeyboardDismiss - skipping reset due to transition');
         }
     };
 
@@ -1386,15 +1355,6 @@ const LiftEditorScreen: React.FC = () => {
         } else {
             values = undefined;
         }
-        console.log('[DEBUG] Computed initialValues for EntryFooter:', {
-            editingTarget,
-            editingMovementIndex,
-            editingSetIndex,
-            isAddingNewMovement,
-            activeMovement: activeMovement ? { name: activeMovement.name } : null,
-            activeSet: activeSet ? { weight: activeSet.weight, reps: activeSet.reps } : null,
-            computedValues: values,
-        });
         return values;
     }, [editingTarget, editingMovementIndex, editingSetIndex, activeMovement, activeSet, lift.title]);
 
@@ -1406,66 +1366,47 @@ const LiftEditorScreen: React.FC = () => {
     }, []);
 
     const handleEntryFooterFocus = React.useCallback(() => {
-        console.log('[DEBUG] handleEntryFooterFocus called');
         // Use refs to get current values (no closure issues)
         const currentEditingTarget = editingTargetRef.current;
         const currentIsAddingNewMovement = isAddingNewMovementRef.current;
         const currentEditingMovementIndex = editingMovementIndexRef.current;
 
-        console.log('[DEBUG] handleEntryFooterFocus - ref values:', {
-            currentEditingTarget,
-            currentIsAddingNewMovement,
-            currentEditingMovementIndex,
-            isIntentionalEditTransitionRef: isIntentionalEditTransitionRef.current,
-            isTransitioningFromRepBoxRef: isTransitioningFromRepBoxRef.current,
-            isTransitioningToSetEntryRef: isTransitioningToSetEntryRef.current,
-            justDismissedRef: justDismissedRef.current,
-            isTransitioningToSetRef: isTransitioningToSetRef.current,
-        });
-
         // If we're in an intentional edit transition (user clicked to edit something), don't interfere
         if (isIntentionalEditTransitionRef.current) {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: isIntentionalEditTransitionRef');
             attemptScrollToActiveTarget();
             return;
         }
 
         // If we're transitioning from rep box to movement/title, don't interfere
         if (isTransitioningFromRepBoxRef.current) {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: isTransitioningFromRepBoxRef');
             attemptScrollToActiveTarget();
             return;
         }
 
         // If we're transitioning to set entry, don't do anything
         if (isTransitioningToSetEntryRef.current) {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: isTransitioningToSetEntryRef');
             return;
         }
 
         // If we just dismissed, don't do anything
         if (justDismissedRef.current) {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: justDismissedRef');
             return;
         }
 
         // Don't show movement bubble if we're editing a set or transitioning to set editing
         if (isTransitioningToSetRef.current) {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: isTransitioningToSetRef');
             attemptScrollToActiveTarget();
             return;
         }
 
         // Also check if we're in set editing mode
         if (currentEditingTarget === 'set') {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: currentEditingTarget is set');
             attemptScrollToActiveTarget();
             return;
         }
 
         // If we're editing title, don't do anything else
         if (currentEditingTarget === 'title') {
-            console.log('[DEBUG] handleEntryFooterFocus - early return: currentEditingTarget is title');
             attemptScrollToActiveTarget();
             return;
         }
@@ -1474,13 +1415,7 @@ const LiftEditorScreen: React.FC = () => {
         // ONLY use the ref value, not the stale state from closure
         // Don't do this if we're transitioning from rep box
         const isDismissed = currentEditingTarget === 'none';
-        console.log('[DEBUG] handleEntryFooterFocus - checking dismissed:', {
-            isDismissed,
-            hasTitle: lift.title.trim().length > 0,
-            isTransitioningFromRepBox: isTransitioningFromRepBoxRef.current,
-        });
         if (isDismissed && lift.title.trim().length > 0 && !isTransitioningFromRepBoxRef.current) {
-            console.log('[DEBUG] handleEntryFooterFocus - showing new movement bubble (dismissed path)');
             setEditingTarget('movementName');
             setIsAddingNewMovement(true);
             setEditingMovementIndex(NEW_MOVEMENT_INDEX);
@@ -1494,14 +1429,9 @@ const LiftEditorScreen: React.FC = () => {
         // If user focuses on movement entry field, show the empty movement bubble
         // Only show new movement bubble when adding a new movement, not when editing an existing one
         const isEditingExistingMovement = currentEditingMovementIndex !== null && currentEditingMovementIndex >= 0;
-        console.log('[DEBUG] handleEntryFooterFocus - checking existing movement:', {
-            isEditingExistingMovement,
-            currentEditingMovementIndex,
-        });
 
         // If editing an existing movement, just scroll to it
         if (isEditingExistingMovement && currentEditingTarget === 'movementName') {
-            console.log('[DEBUG] handleEntryFooterFocus - editing existing movement, just scrolling');
             attemptScrollToActiveTarget();
             return;
         }
@@ -1513,16 +1443,7 @@ const LiftEditorScreen: React.FC = () => {
             currentEditingTarget === 'movementName' &&
             !currentIsAddingNewMovement;
 
-        console.log('[DEBUG] handleEntryFooterFocus - checking shouldShowMovementBubble:', {
-            shouldShowMovementBubble,
-            hasTitle: lift.title.trim().length > 0,
-            isEditingExistingMovement,
-            currentEditingTarget,
-            currentIsAddingNewMovement,
-        });
-
         if (shouldShowMovementBubble && !currentIsAddingNewMovement) {
-            console.log('[DEBUG] handleEntryFooterFocus - showing new movement bubble (shouldShowMovementBubble path)');
             setIsAddingNewMovement(true);
             setEditingMovementIndex(NEW_MOVEMENT_INDEX);
             setEditingSetIndex(null);
@@ -1531,7 +1452,6 @@ const LiftEditorScreen: React.FC = () => {
             setFirstInputValue('');
         }
 
-        console.log('[DEBUG] handleEntryFooterFocus - end, calling attemptScrollToActiveTarget');
         attemptScrollToActiveTarget();
     }, [
         attemptScrollToActiveTarget,
@@ -1605,27 +1525,15 @@ const LiftEditorScreen: React.FC = () => {
                                         type="title"
                                         content={lift.title}
                                         onTitlePress={() => {
-                                            console.log('[DEBUG] onTitlePress called');
-                                            console.log('[DEBUG] Current state:', {
-                                                entryMode,
-                                                editingTarget,
-                                                editingMovementIndex,
-                                                editingSetIndex,
-                                                isAddingNewMovement,
-                                            });
                                             // Check if we're transitioning from rep box (double mode with set editing)
                                             const isFromRepBox = entryMode === 'double' && editingTarget === 'set';
-                                            console.log('[DEBUG] isFromRepBox:', isFromRepBox);
                                             if (isFromRepBox) {
                                                 isTransitioningFromRepBoxRef.current = true;
-                                                console.log('[DEBUG] Set isTransitioningFromRepBoxRef to true');
                                                 // Mark that we need to increment reset key after state updates
                                                 pendingRepBoxResetKeyIncrementRef.current = true;
-                                                console.log('[DEBUG] Marked pendingRepBoxResetKeyIncrementRef for rep box transition');
                                             }
                                             // Prevent useEffect from overwriting refs during this transition
                                             isIntentionalEditTransitionRef.current = true;
-                                            console.log('[DEBUG] Set isIntentionalEditTransitionRef to true');
                                             // Update refs immediately to prevent race conditions with handleEntryFooterFocus
                                             editingTargetRef.current = 'title';
                                             isAddingNewMovementRef.current = false;
@@ -1637,7 +1545,6 @@ const LiftEditorScreen: React.FC = () => {
                                             setIsAddingNewMovement(false);
                                             setShouldFocusOnEdit(true);
                                             setTimeout(() => {
-                                                console.log('[DEBUG] Clearing transition refs after timeout');
                                                 isIntentionalEditTransitionRef.current = false;
                                                 isTransitioningFromRepBoxRef.current = false;
                                             }, 200);
@@ -1659,34 +1566,19 @@ const LiftEditorScreen: React.FC = () => {
                                         onLayout={(event) => registerMovementLayout(index, event.nativeEvent.layout)}
                                         style={{ position: 'relative' }}
                                     >
-                                        {DEBUG_OUTLINES_ENABLED && (
-                                            <View style={styles.debugExistingMovementOverlay} pointerEvents="none" />
-                                        )}
                                         <MessageBubble
                                             type="movement"
                                             content={movement}
                                             onMovementPress={() => {
-                                                console.log('[DEBUG] onMovementPress called for movement index:', index);
-                                                console.log('[DEBUG] Current state:', {
-                                                    entryMode,
-                                                    editingTarget,
-                                                    editingMovementIndex,
-                                                    editingSetIndex,
-                                                    isAddingNewMovement,
-                                                });
                                                 // Check if we're transitioning from rep box (double mode with set editing)
                                                 const isFromRepBox = entryMode === 'double' && editingTarget === 'set';
-                                                console.log('[DEBUG] isFromRepBox:', isFromRepBox);
                                                 if (isFromRepBox) {
                                                     isTransitioningFromRepBoxRef.current = true;
-                                                    console.log('[DEBUG] Set isTransitioningFromRepBoxRef to true');
                                                     // Mark that we need to increment reset key after state updates
                                                     pendingRepBoxResetKeyIncrementRef.current = true;
-                                                    console.log('[DEBUG] Marked pendingRepBoxResetKeyIncrementRef for rep box transition');
                                                 }
                                                 // Prevent useEffect from overwriting refs during this transition
                                                 isIntentionalEditTransitionRef.current = true;
-                                                console.log('[DEBUG] Set isIntentionalEditTransitionRef to true');
                                                 // Update refs immediately to prevent race conditions with handleEntryFooterFocus
                                                 editingTargetRef.current = 'movementName';
                                                 isAddingNewMovementRef.current = false;
@@ -1698,7 +1590,6 @@ const LiftEditorScreen: React.FC = () => {
                                                 setEntryMode('single');
                                                 setShouldFocusOnEdit(true);
                                                 setTimeout(() => {
-                                                    console.log('[DEBUG] Clearing transition refs after timeout');
                                                     isIntentionalEditTransitionRef.current = false;
                                                     isTransitioningFromRepBoxRef.current = false;
                                                 }, 200);
@@ -1807,11 +1698,7 @@ const LiftEditorScreen: React.FC = () => {
                                                 }}
                                                 android_ripple={null}
                                             >
-                                                <View style={styles.emptyLine}>
-                                                    {DEBUG_OUTLINES_ENABLED && (
-                                                        <View style={styles.debugClickableAreaOverlay} />
-                                                    )}
-                                                </View>
+                                                <View style={styles.emptyLine} />
                                             </Pressable>
                                         )}
 
@@ -1821,9 +1708,6 @@ const LiftEditorScreen: React.FC = () => {
                                                 onLayout={(event) => registerMovementLayout(NEW_MOVEMENT_INDEX, event.nativeEvent.layout)}
                                                 style={{ position: 'relative' }}
                                             >
-                                                {DEBUG_OUTLINES_ENABLED && (
-                                                    <View style={styles.debugPlacementAreaOverlay} pointerEvents="none" />
-                                                )}
                                                 <MessageBubble
                                                     type="movement"
                                                     content={{ name: '', sets: [] }}
@@ -1864,18 +1748,6 @@ const LiftEditorScreen: React.FC = () => {
 
                     {!isLoading && (
                         <View onLayout={handleFooterLayout}>
-                            {(() => {
-                                console.log('[DEBUG] EntryFooter render - current state:', {
-                                    entryMode,
-                                    editingTarget,
-                                    editingMovementIndex,
-                                    editingSetIndex,
-                                    isAddingNewMovement,
-                                    entryFooterResetKey,
-                                    initialValues: computedInitialValues,
-                                });
-                                return null;
-                            })()}
                             <EntryFooter
                                 key={entryFooterResetKey}
                                 mode={entryMode}
@@ -2041,41 +1913,6 @@ const styles = StyleSheet.create({
     emptyLine: {
         height: 24,
         position: 'relative',
-    },
-    debugClickableAreaOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Red tint for clickable area
-        borderWidth: 2,
-        borderColor: 'red',
-        borderStyle: 'dashed',
-    },
-    debugPlacementAreaOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 255, 0, 0.2)', // Green tint for placement area
-        borderWidth: 2,
-        borderColor: 'green',
-        borderStyle: 'dashed',
-        zIndex: 1000,
-    },
-    debugExistingMovementOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(128, 0, 128, 0.2)', // Purple tint for existing movement bubbles
-        borderWidth: 2,
-        borderColor: 'purple',
-        borderStyle: 'dashed',
-        zIndex: 1000,
     },
 });
 

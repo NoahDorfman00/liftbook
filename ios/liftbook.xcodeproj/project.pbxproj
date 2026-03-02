@@ -12,7 +12,6 @@
 		5A6A1521060943689F547316 /* BootSplash.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 064E78EE3E284A12825E69E7 /* BootSplash.storyboard */; };
 		6BB253931189405D8E7A3077 /* Schoolbell-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 00C57F70B53D4671BE152280 /* Schoolbell-Regular.ttf */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
-		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		BFA62243A3A9417093FF4B1C /* LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0133A73CDA0A4969BB5056B7 /* LICENSE.txt */; };
 		C0A5D15306014983A03B4790 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E4B35F44814496D9135AA88 /* Colors.xcassets */; };
 		F39C267C28ED386727337F6C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
@@ -31,7 +30,6 @@
 		5DCACB8F33CDC322A6C60F78 /* libPods-liftbook.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-liftbook.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = liftbook/AppDelegate.swift; sourceTree = "<group>"; };
 		7E4B35F44814496D9135AA88 /* Colors.xcassets */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = folder.assetcatalog; name = Colors.xcassets; path = liftbook/Colors.xcassets; sourceTree = "<group>"; };
-		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = liftbook/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -53,7 +51,6 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
-				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				064E78EE3E284A12825E69E7 /* BootSplash.storyboard */,
 				7E4B35F44814496D9135AA88 /* Colors.xcassets */,
@@ -178,7 +175,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				F39C267C28ED386727337F6C /* PrivacyInfo.xcprivacy in Resources */,
 				6BB253931189405D8E7A3077 /* Schoolbell-Regular.ttf in Resources */,
@@ -288,14 +284,14 @@
 				DEVELOPMENT_TEAM = YDC838ZVZ8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = liftbook/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = liftbook;
+				INFOPLIST_KEY_CFBundleDisplayName = Liftbook;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -305,6 +301,7 @@
 				PRODUCT_NAME = liftbook;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
@@ -319,14 +316,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YDC838ZVZ8;
 				INFOPLIST_FILE = liftbook/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = liftbook;
+				INFOPLIST_KEY_CFBundleDisplayName = Liftbook;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -335,6 +332,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.noahdorfman.liftbook;
 				PRODUCT_NAME = liftbook;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
