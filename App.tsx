@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { View, Text, useColorScheme } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { View, Text, useColorScheme, Linking } from 'react-native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RootStackParamList } from './types';
@@ -8,6 +8,7 @@ import { LOCAL_STORAGE_KEYS } from './utils';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
+import HeavyShareScreen from './HeavyShareScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RNBootSplash from 'react-native-bootsplash';
@@ -17,6 +18,18 @@ declare global {
 }
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ['liftbook://', 'https://liftbookapp.com'],
+  config: {
+    screens: {
+      Heavy: 'heavy',
+      LiftList: '',
+      LiftEditor: 'editor',
+      Charts: 'charts',
+    },
+  },
+};
 
 const initApp = async () => {
   try {
@@ -105,7 +118,7 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          <NavigationContainer>
+          <NavigationContainer linking={linking}>
             <Stack.Navigator
               screenOptions={{
                 headerShown: false,
@@ -142,6 +155,15 @@ export default function App() {
                   animationMatchesGesture: true,
                   gestureEnabled: true,
                   fullScreenGestureEnabled: true,
+                }}
+              />
+              <Stack.Screen
+                name="Heavy"
+                component={HeavyShareScreen}
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom',
                 }}
               />
             </Stack.Navigator>
