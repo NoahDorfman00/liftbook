@@ -90,13 +90,35 @@ describe('loading stored shapes', () => {
         expect(await storedLifts()).toEqual({ '100': modern, '123': legacy });
     });
 
-    it('keeps a date-keyed entry with no id under its date key', async () => {
+    it('adopts the key as id for a date-keyed entry with no id', async () => {
         // Oldest legacy shape: keyed by date, no id field on the lift
         const noId = { date: '2024-01-15', title: 'Old Day', movements: [] };
         await seed({ '2024-01-15': noId });
 
         const lifts = await retrieveLifts();
-        expect(lifts['2024-01-15']).toEqual(noId);
+        expect(lifts['2024-01-15']).toEqual({ ...noId, id: '2024-01-15' });
+        expect(await storedLifts()).toEqual({ '2024-01-15': { ...noId, id: '2024-01-15' } });
+    });
+
+    it('adopts the key as both id and date when a date-keyed entry has neither', async () => {
+        const bare = { title: 'Ancient Day', movements: [] };
+        await seed({ '2024-03-10': bare });
+
+        const lifts = await retrieveLifts();
+        expect(lifts['2024-03-10']).toEqual({
+            ...bare,
+            id: '2024-03-10',
+            date: '2024-03-10',
+        });
+    });
+
+    it('fills a missing id from a non-date key without inventing a date', async () => {
+        // Saved while lift.id was undefined — keyed by the string "undefined"
+        const noId = { title: 'Ancient Day', movements: [], date: '2027-03-10' };
+        await seed({ undefined: noId });
+
+        const lifts = await retrieveLifts();
+        expect(lifts['undefined']).toEqual({ ...noId, id: 'undefined' });
     });
 
     it('preserves lifts missing a date field without inventing one', async () => {
@@ -105,6 +127,8 @@ describe('loading stored shapes', () => {
 
         const lifts = await retrieveLifts();
         expect(lifts['123']).toEqual(noDate);
+        // Nothing needed migrating, so nothing is written back
+        expect(AsyncStorage.setItem).not.toHaveBeenCalled();
     });
 
     it('survives a null entry without dropping the other lifts', async () => {

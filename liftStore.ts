@@ -42,19 +42,34 @@ export const getLiftsSnapshot = (): LiftsMap => snapshot;
 
 const isDateString = (key: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(key);
 
-// Legacy blobs keyed entries by date (e.g. "2024-01-15") instead of lift id.
-// Re-key those by their stored id; leave everything else untouched.
+// Legacy blobs differ from the current shape in two ways:
+// - entries keyed by date (e.g. "2024-01-15") instead of lift id, with the
+//   date and/or id fields missing from the lift itself
+// - entries saved while lift.id was undefined (keyed by the string
+//   "undefined"), also missing their id field
+// Fill in the missing fields (the key doubles as the date and the id for
+// date-keyed entries) and re-key by id; leave everything else untouched.
 // Returns null when no entry needed migrating.
 const normalizeLegacyKeys = (parsed: { [key: string]: any }): LiftsMap | null => {
     let changed = false;
     const normalized: LiftsMap = {};
     Object.entries(parsed).forEach(([key, lift]) => {
-        if (isDateString(key) && lift && typeof lift === 'object' && lift.id) {
-            normalized[lift.id] = lift;
-            changed = true;
-        } else {
+        if (!lift || typeof lift !== 'object') {
             normalized[key] = lift;
+            return;
         }
+        if (!lift.date && isDateString(key)) {
+            lift = { ...lift, date: key };
+            changed = true;
+        }
+        if (!lift.id) {
+            lift = { ...lift, id: key };
+            changed = true;
+        }
+        if (key !== lift.id) {
+            changed = true;
+        }
+        normalized[lift.id] = lift;
     });
     return changed ? normalized : null;
 };
