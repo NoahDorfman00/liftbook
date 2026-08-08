@@ -3,20 +3,53 @@ import { Lift } from './types';
 
 export const LOCAL_STORAGE_KEYS = {
     LIFTS: 'user_lifts',
-    MOVEMENTS: 'user_movements',
+};
+
+// Today's date as YYYY-MM-DD in the local timezone
+export const todayISO = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// Human-readable date for display, from a YYYY-MM-DD string
+export const formatDisplayDate = (dateStr: string): string =>
+    new Date(dateStr.split('T')[0] + 'T12:00:00Z').toLocaleDateString();
+
+// Split on spaces, dashes, slashes, colons, and parentheses
+export const splitIntoWords = (text: string): string[] =>
+    text
+        .split(/[\s\-/:()]+/)
+        .filter(word => word.length > 0)
+        .map(word => word.toLowerCase());
+
+// Each query word must match the start of a distinct target word
+export const matchesQuery = (text: string, query: string): boolean => {
+    if (!query) return true;
+    const targetWords = splitIntoWords(text);
+    const queryWords = splitIntoWords(query);
+    if (queryWords.length === 0) return true;
+    const used = new Array(targetWords.length).fill(false);
+    return queryWords.every(qWord => {
+        const idx = targetWords.findIndex(
+            (tWord, i) => !used[i] && tWord.startsWith(qWord)
+        );
+        if (idx === -1) return false;
+        used[idx] = true;
+        return true;
+    });
 };
 
 interface LocalData {
     lifts: { [id: string]: Lift };
-    movements: { [name: string]: string[] };
-    lastModified: number;
 }
 
 // Initialize or get local data store
 export const getLocalData = async (): Promise<LocalData> => {
     try {
         const liftsData = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
-        const movementsData = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.MOVEMENTS);
         const parsedLifts = liftsData ? JSON.parse(liftsData) : {};
 
         // Convert any old date-based keys to use their stored ID
@@ -30,14 +63,10 @@ export const getLocalData = async (): Promise<LocalData> => {
             }
         });
 
-        return {
-            lifts: normalizedLifts,
-            movements: movementsData ? JSON.parse(movementsData) : {},
-            lastModified: Date.now(),
-        };
+        return { lifts: normalizedLifts };
     } catch (error) {
         console.error('Error getting local data:', error);
-        return { lifts: {}, movements: {}, lastModified: Date.now() };
+        return { lifts: {} };
     }
 };
 
@@ -47,7 +76,6 @@ export const saveLiftLocally = async (lift: Lift) => {
         const localData = await getLocalData();
         // Use the lift's ID as the key instead of date
         localData.lifts[lift.id] = lift;
-        localData.lastModified = Date.now();
         await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(localData.lifts));
     } catch (error) {
         console.error('Error saving lift locally:', error);
@@ -60,23 +88,10 @@ export const deleteLiftLocally = async (liftId: string) => {
         const localData = await getLocalData();
         if (localData.lifts[liftId]) {
             delete localData.lifts[liftId];
-            localData.lastModified = Date.now();
             await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.LIFTS, JSON.stringify(localData.lifts));
         }
     } catch (error) {
         console.error('Error deleting lift locally:', error);
-    }
-};
-
-// Save movement data locally
-export const saveMovementLocally = async (name: string, dates: string[]) => {
-    try {
-        const localData = await getLocalData();
-        localData.movements[name] = dates;
-        localData.lastModified = Date.now();
-        await AsyncStorage.setItem(LOCAL_STORAGE_KEYS.MOVEMENTS, JSON.stringify(localData.movements));
-    } catch (error) {
-        console.error('Error saving movement locally:', error);
     }
 };
 
@@ -114,25 +129,3 @@ export const retrieveLift = async (liftId: string): Promise<Lift | null> => {
         return null;
     }
 };
-
-// Retrieve all movements
-export const retrieveMovements = async (): Promise<{ [name: string]: string[] }> => {
-    try {
-        const localData = await getLocalData();
-        return localData.movements;
-    } catch (error) {
-        console.error('Error retrieving movements:', error);
-        return {};
-    }
-};
-
-// Retrieve a specific movement
-export const retrieveMovement = async (name: string): Promise<string[]> => {
-    try {
-        const localData = await getLocalData();
-        return localData.movements[name] || [];
-    } catch (error) {
-        console.error(`Error retrieving movement: ${name}`, error);
-        return [];
-    }
-}; 

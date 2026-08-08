@@ -9,14 +9,13 @@ import {
     FlatList,
     Dimensions,
     Image,
-    PanResponder,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
-import { retrieveLifts } from './utils';
+import { retrieveLifts, matchesQuery } from './utils';
 import { DEFAULT_MOVEMENTS } from './suggestions';
 
 type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Charts'>;
@@ -43,29 +42,6 @@ const TIME_RANGES: { label: string; value: TimeRange }[] = [
     { label: '1Y', value: '1Y' },
     { label: 'All', value: 'All' },
 ];
-
-const splitIntoWords = (text: string): string[] => {
-    return text
-        .split(/[\s\-/:()]+/)
-        .filter(word => word.length > 0)
-        .map(word => word.toLowerCase());
-};
-
-const matchesQuery = (text: string, query: string): boolean => {
-    if (!query) return true;
-    const targetWords = splitIntoWords(text);
-    const queryWords = splitIntoWords(query);
-    if (queryWords.length === 0) return true;
-    const used = new Array(targetWords.length).fill(false);
-    return queryWords.every(qWord => {
-        const idx = targetWords.findIndex(
-            (tWord, i) => !used[i] && tWord.startsWith(qWord)
-        );
-        if (idx === -1) return false;
-        used[idx] = true;
-        return true;
-    });
-};
 
 function getRangeStartDate(range: TimeRange): Date | null {
     if (range === 'All') return null;

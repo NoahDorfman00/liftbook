@@ -12,12 +12,8 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
-
-interface LiftPreview {
-    date: string;
-    title: string;
-    id: string;
-}
+import { LiftPreview } from './types';
+import { formatDisplayDate } from './utils';
 
 interface LiftPreviewListProps {
     lifts: LiftPreview[];
@@ -143,7 +139,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     onPress={() => onSelectLift(item.id)}
                 >
                     <Text style={[styles.date, { color: '#666' }]}>
-                        {new Date(item.date.split('T')[0] + 'T12:00:00Z').toLocaleDateString()}
+                        {formatDisplayDate(item.date)}
                     </Text>
                     <Text
                         style={[styles.title, { color: '#333' }]}

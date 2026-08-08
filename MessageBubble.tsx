@@ -8,19 +8,10 @@ import {
     UIManager,
     LayoutRectangle,
 } from 'react-native';
+import { Movement } from './types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-interface Set {
-    weight: string;
-    reps: string;
-}
-
-interface Movement {
-    name: string;
-    sets: Set[];
 }
 
 interface MessageBubbleProps {

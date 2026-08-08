@@ -21,29 +21,20 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EntryFooter, { EntryMode } from './EntryFooter';
 import MessageBubble from './MessageBubble';
-import { RootStackParamList } from './types';
-import { retrieveLift, retrieveLifts, saveLiftLocally, deleteLiftLocally } from './utils';
+import { RootStackParamList, Lift, Movement } from './types';
+import {
+    retrieveLift,
+    retrieveLifts,
+    saveLiftLocally,
+    deleteLiftLocally,
+    todayISO,
+    formatDisplayDate,
+    matchesQuery,
+} from './utils';
 import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
-
-interface Set {
-    weight: string;
-    reps: string;
-}
-
-interface Movement {
-    name: string;
-    sets: Set[];
-}
-
-interface Lift {
-    id: string;
-    date: string;
-    title: string;
-    movements: Movement[];
-}
 
 const RuledLines = ({ minHeight = 10000 }: { minHeight?: number }) => {
     // Generate enough lines to cover the minimum height
@@ -69,13 +60,7 @@ const LiftEditorScreen: React.FC = () => {
 
     const [lift, setLift] = useState<Lift>({
         id: route.params?.liftId || Date.now().toString(),
-        date: route.params?.date || (() => {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        })(),
+        date: route.params?.date || todayISO(),
         title: '',
         movements: [],
     });
@@ -134,10 +119,6 @@ const LiftEditorScreen: React.FC = () => {
 
         loadAllLifts();
     }, []);
-
-    useEffect(() => {
-        // EntryMode tracking removed - not needed for production
-    }, [entryMode, route.params?.liftId, lift.title, editingMovementIndex, editingSetIndex, editingTarget]);
 
     useEffect(() => {
         if (route.params?.liftId) {
@@ -442,13 +423,7 @@ const LiftEditorScreen: React.FC = () => {
             const updatedLiftData = {
                 ...liftData,
                 // If date is undefined, use the liftId if it looks like a date, otherwise use current date
-                date: liftData.date || (liftId.match(/^\d{4}-\d{2}-\d{2}$/) ? liftId : (() => {
-                    const now = new Date();
-                    const year = now.getFullYear();
-                    const month = String(now.getMonth() + 1).padStart(2, '0');
-                    const day = String(now.getDate()).padStart(2, '0');
-                    return `${year}-${month}-${day}`;
-                })())
+                date: liftData.date || (liftId.match(/^\d{4}-\d{2}-\d{2}$/) ? liftId : todayISO())
             };
 
             setLift(updatedLiftData);
@@ -507,13 +482,7 @@ const LiftEditorScreen: React.FC = () => {
             // Ensure date is set before saving
             const liftWithDate = {
                 ...liftToSave,
-                date: liftToSave.date || (() => {
-                    const now = new Date();
-                    const year = now.getFullYear();
-                    const month = String(now.getMonth() + 1).padStart(2, '0');
-                    const day = String(now.getDate()).padStart(2, '0');
-                    return `${year}-${month}-${day}`;
-                })(),
+                date: liftToSave.date || todayISO(),
                 // Clean up movements with no sets
                 movements: liftToSave.movements.filter(movement => movement.sets.length > 0)
             };
@@ -871,10 +840,6 @@ const LiftEditorScreen: React.FC = () => {
         saveLift(updatedLift);
     };
 
-    const handleScrollViewLayout = (event: any) => {
-        // Layout tracking removed - not needed for production
-    };
-
     const getLiftSortKey = (liftToScore: Lift) => {
         const dateTimestamp = Date.parse(`${liftToScore.date}T00:00:00`);
         const parsedDate = Number.isNaN(dateTimestamp) ? 0 : dateTimestamp;
@@ -961,37 +926,6 @@ const LiftEditorScreen: React.FC = () => {
         }
         return 'movement';
     }, [entryMode, editingTarget, lift.title]);
-
-    // Helper function to split movement names or titles into words
-    const splitIntoWords = (text: string): string[] => {
-        // Split on spaces, dashes, slashes, colons, and parentheses
-        return text
-            .split(/[\s\-/:()]+/)
-            .filter(word => word.length > 0)
-            .map(word => word.toLowerCase());
-    };
-
-    // Helper function to check if a movement or title matches the query
-    const matchesQuery = (text: string, query: string): boolean => {
-        if (!query) {
-            return true;
-        }
-        const targetWords = splitIntoWords(text);
-        const queryWords = splitIntoWords(query);
-        if (queryWords.length === 0) {
-            return true;
-        }
-        // Each query word must match the start of a distinct target word
-        const used = new Array(targetWords.length).fill(false);
-        return queryWords.every(qWord => {
-            const idx = targetWords.findIndex(
-                (tWord, i) => !used[i] && tWord.startsWith(qWord)
-            );
-            if (idx === -1) return false;
-            used[idx] = true;
-            return true;
-        });
-    };
 
     const titleSuggestions = React.useMemo(() => {
         if (suggestionContext !== 'title') {
@@ -1305,17 +1239,7 @@ const LiftEditorScreen: React.FC = () => {
         return [];
     }, [movementSuggestions, suggestionContext, titleSuggestions]);
 
-    // Track the most recent value to detect if this is a user input or a sync
-    const lastFirstInputValueRef = useRef<string>('');
-
     const handleFirstValueChange = React.useCallback((value: string) => {
-        // Always update, but use a ref to track the most recent value
-        // This helps ensure we don't miss user input
-        const previousValue = lastFirstInputValueRef.current;
-        lastFirstInputValueRef.current = value;
-
-        // Always update state - React will handle batching
-        // The key is that this is called on every onChangeText, including the first keystroke
         setFirstInputValue(value);
     }, []);
 
@@ -1482,7 +1406,7 @@ const LiftEditorScreen: React.FC = () => {
                     <View style={styles.headerCenter}>
                         <TouchableOpacity onPress={handleDatePress}>
                             <Text style={[styles.dateText, { color: '#333' }]}>
-                                {new Date(lift.date.split('T')[0] + 'T12:00:00Z').toLocaleDateString()}
+                                {formatDisplayDate(lift.date)}
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -1505,7 +1429,6 @@ const LiftEditorScreen: React.FC = () => {
                         ]}
                         keyboardShouldPersistTaps="handled"
                         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                        onLayout={handleScrollViewLayout}
                     >
                         <View
                             style={styles.notebookBackground}

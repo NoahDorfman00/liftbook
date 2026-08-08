@@ -1,20 +1,14 @@
 import * as React from 'react';
-import { View, Text, useColorScheme, Linking } from 'react-native';
+import { View, Text, useColorScheme } from 'react-native';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RootStackParamList } from './types';
-import { LOCAL_STORAGE_KEYS } from './utils';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RNBootSplash from 'react-native-bootsplash';
-
-declare global {
-  var selectedDate: string | undefined;
-}
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -29,31 +23,6 @@ const linking: LinkingOptions<RootStackParamList> = {
   },
 };
 
-const initApp = async () => {
-  try {
-    // Initialize AsyncStorage
-    try {
-      await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
-    } catch (storageError) {
-      console.error('AsyncStorage error:', storageError);
-    }
-
-    // Set initial date
-    const currentDate = new Date();
-    const year = currentDate.getFullYear();
-    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-    const day = String(currentDate.getDate()).padStart(2, '0');
-    const dateInCurrentTimezone = `${year}-${month}-${day}`;
-    global.selectedDate = dateInCurrentTimezone;
-
-    return true;
-  } catch (error) {
-    console.error('Critical initialization error:', error);
-    return false;
-  }
-};
-
-// Add this class near the top of the file
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -86,37 +55,17 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-// (Removed test and debug helpers for splash screen)
-
 export default function App() {
   const colorScheme = useColorScheme() || 'dark';
-  const [isInitialized, setIsInitialized] = React.useState(false);
-
-  React.useEffect(() => {
-    const initialize = async () => {
-      try {
-        await initApp();
-        RNBootSplash.hide({ fade: true });
-        setIsInitialized(true);
-      } catch (error) {
-        console.error('App initialization failed:', error);
-        // Still hide splash screen even if initialization fails
-        RNBootSplash.hide({ fade: true });
-        setIsInitialized(true);
-      }
-    };
-    initialize();
-  }, []);
-
-  if (!isInitialized) {
-    return null;
-  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          <NavigationContainer linking={linking}>
+          <NavigationContainer
+            linking={linking}
+            onReady={() => RNBootSplash.hide({ fade: true })}
+          >
             <Stack.Navigator
               screenOptions={{
                 headerShown: false,
