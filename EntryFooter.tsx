@@ -54,7 +54,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const insets = useSafeAreaInsets();
     const [showWarning, setShowWarning] = useState(false);
     const [warningMessage, setWarningMessage] = useState('');
-    const [activeField, setActiveField] = useState<'first' | 'second'>('first');
     const firstInputRef = useRef<TextInput>(null);
     const secondInputRef = useRef<TextInput>(null);
     const isSubmitting = useRef(false);
@@ -150,18 +149,12 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     }, [onKeyboardDismiss, insets.bottom]);
 
     const handleSubmit = (override?: { first?: string; second?: string }) => {
-        const isWeightEntry = firstPlaceholder === 'Enter weight...';
-
         const firstToUse = (override?.first ?? firstValue).trim();
         const secondToUse = (override?.second ?? secondValue).trim();
 
         if (mode === 'single') {
             if (!firstToUse) {
-                showWarningMessage(isWeightEntry ? 'Please enter a weight' : 'Please enter a value');
-                return;
-            }
-            if (isWeightEntry && !isValidNumber(firstToUse)) {
-                showWarningMessage('Please enter a valid positive number for weight');
+                showWarningMessage('Please enter a value');
                 return;
             }
             onSubmit({ first: firstToUse });
@@ -262,13 +255,12 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             }
                         }}
                         onFocus={() => {
-                            setActiveField('first');
                             onFirstFieldFocus?.();
                         }}
                         placeholder={firstPlaceholder}
                         placeholderTextColor={'#999'}
                         returnKeyType={mode === 'single' ? 'done' : 'next'}
-                        keyboardType={firstPlaceholder === 'Enter weight...' ? 'numbers-and-punctuation' : 'default'}
+                        keyboardType={mode === 'double' ? 'numbers-and-punctuation' : 'default'}
                         onSubmitEditing={(e) => {
                             isSubmitting.current = true;
                             if (mode === 'single') {
@@ -297,9 +289,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                     clearWarning();
                                 }
                             }}
-                            onFocus={() => {
-                                setActiveField('second');
-                            }}
                             placeholder={secondPlaceholder}
                             placeholderTextColor={'#999'}
                             keyboardType="numbers-and-punctuation"
@@ -313,39 +302,21 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         />
                     )}
                 </View>
-                {(
-                    (mode === 'single' && suggestions.length > 0) ||
-                    (mode === 'double' &&
-                        suggestions.length > 0 &&
-                        firstPlaceholder === 'Enter weight...' &&
-                        activeField === 'first')
-                ) && (
-                        <View style={styles.suggestionsContainer}>
-                            {suggestions.slice(0, 3).map((suggestion) => (
-                                <View key={suggestion} style={styles.suggestionSlot}>
-                                    <TouchableOpacity
-                                        style={styles.suggestionTouchable}
-                                        onPress={() => {
-                                            // In single mode (titles/movements), selecting a suggestion submits immediately.
-                                            if (mode === 'single') {
-                                                handleSubmit({ first: suggestion });
-                                                return;
-                                            }
-
-                                            // In double mode, suggestions are only shown for the weight field.
-                                            // Selecting one fills the weight and moves focus to reps.
-                                            onFirstValueChange(suggestion);
-                                            setTimeout(() => {
-                                                secondInputRef.current?.focus();
-                                            }, 0);
-                                        }}
-                                    >
-                                        <Text style={styles.suggestionText}>{suggestion}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            ))}
-                        </View>
-                    )}
+                {mode === 'single' && suggestions.length > 0 && (
+                    <View style={styles.suggestionsContainer}>
+                        {suggestions.slice(0, 3).map((suggestion) => (
+                            <View key={suggestion} style={styles.suggestionSlot}>
+                                <TouchableOpacity
+                                    style={styles.suggestionTouchable}
+                                    // Selecting a suggestion submits it immediately
+                                    onPress={() => handleSubmit({ first: suggestion })}
+                                >
+                                    <Text style={styles.suggestionText}>{suggestion}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ))}
+                    </View>
+                )}
                 {mode === 'double' && !!lastTimeNote && (
                     <View style={styles.lastTimeContainer}>
                         <Text style={styles.lastTimeText}>{lastTimeNote}</Text>
