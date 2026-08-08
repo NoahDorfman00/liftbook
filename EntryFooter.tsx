@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PanGestureHandler, State as GestureState } from 'react-native-gesture-handler';
+import { useKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useTheme } from './theme';
 
 export type EntryMode = 'single' | 'double';
@@ -63,7 +64,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const secondInputRef = useRef<TextInput>(null);
     const isSubmitting = useRef(false);
     const warningTimeout = useRef<NodeJS.Timeout | null>(null);
-    const keyboardOffset = useRef(new Animated.Value(0));
     const prevKeyboardHeightRef = useRef(0);
     const hasTriggeredDismissRef = useRef(false);
 
@@ -92,41 +92,44 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         clearWarning();
     }, [mode, focusRequest]);
 
-    // Focus the first input whenever the parent requests it
+    // Focus the first input whenever the parent requests it. The input stays
+    // mounted and focused across mode switches — its keyboardType prop just
+    // changes, and the (patched) native side reloads the keyboard in place
+    // without dismissing it. The ref guard keeps a mode change alone from
+    // re-firing an old request and reopening the keyboard.
+    const lastFocusRequestRef = useRef(0);
     useEffect(() => {
-        if (focusRequest > 0) {
-            const timeout = setTimeout(() => {
-                firstInputRef.current?.focus();
-            }, 100);
-            return () => clearTimeout(timeout);
+        if (focusRequest > lastFocusRequestRef.current) {
+            lastFocusRequestRef.current = focusRequest;
+            firstInputRef.current?.focus();
         }
     }, [focusRequest]);
 
-    // Track the parent-owned keyboard height: animate the footer to sit on
-    // top of the keyboard, and treat a drop to zero as a dismissal.
-    useEffect(() => {
-        const target = Math.max(0, keyboardHeight - (insets.bottom || 0) - 8);
-        if (Platform.OS === 'ios') {
-            Animated.spring(keyboardOffset.current, {
-                toValue: target,
-                useNativeDriver: true,
-                tension: 65,
-                friction: 11,
-            }).start();
-        } else {
-            Animated.timing(keyboardOffset.current, {
-                toValue: target,
-                duration: 100,
-                useNativeDriver: true,
-            }).start();
-        }
+    // The keyboard's live position (0 → -keyboardHeight), driven natively
+    // per frame by keyboard-controller, so the footer rides the keyboard
+    // exactly — correct curve, no lag, interactive dismissal included. The
+    // offset backs the footer off by the safe-area inset + 8 the keyboard
+    // already clears, clamping at 0 while the keyboard is down.
+    const { height: keyboardPosition } = useKeyboardAnimation();
+    const bottomOffset = (insets.bottom || 0) + 8;
+    const translateY = React.useMemo(
+        () => keyboardPosition.interpolate({
+            inputRange: [-bottomOffset - 1, -bottomOffset],
+            outputRange: [-1, 0],
+            extrapolateRight: 'clamp',
+        }),
+        [keyboardPosition, bottomOffset]
+    );
 
+    // The parent-owned height is still the signal for logical dismissal:
+    // a drop to zero outside a submit resets the editing state.
+    useEffect(() => {
         const wasVisible = prevKeyboardHeightRef.current > 0;
         prevKeyboardHeightRef.current = keyboardHeight;
         if (keyboardHeight === 0 && wasVisible && !isSubmitting.current && onKeyboardDismiss) {
             onKeyboardDismiss();
         }
-    }, [keyboardHeight, insets.bottom, onKeyboardDismiss]);
+    }, [keyboardHeight, onKeyboardDismiss]);
 
     // Clear any pending warning timer on unmount
     useEffect(() => {
@@ -209,11 +212,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                     {
                         backgroundColor: theme.surface,
                         borderTopColor: theme.line,
-                        transform: [
-                            {
-                                translateY: Animated.multiply(keyboardOffset.current, -1),
-                            },
-                        ],
+                        transform: [{ translateY }],
                     }
                 ]}
             >
@@ -239,10 +238,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 )}
                 <View style={styles.inputContainer}>
                     <TextInput
-                        // iOS only applies keyboardType/returnKeyType on focus;
-                        // remount when the mode changes so the right keyboard
-                        // appears (the focus request then refocuses the field)
-                        key={mode}
                         ref={firstInputRef}
                         style={[
                             styles.input,
@@ -261,6 +256,10 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         placeholder={firstPlaceholder}
                         placeholderTextColor={theme.textTertiary}
                         keyboardAppearance={theme.isDark ? 'dark' : 'light'}
+                        // Changing these while focused swaps the keyboard
+                        // layout in place — no remount, no responder change
+                        // (patches/react-native adds the missing Fabric
+                        // reloadInputViews call that makes this live-update)
                         returnKeyType={mode === 'single' ? 'done' : 'next'}
                         keyboardType={mode === 'double' ? 'numbers-and-punctuation' : 'default'}
                         onSubmitEditing={(e) => {
@@ -269,41 +268,41 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                 // Use the event's text: the controlled prop can lag
                                 // the native field by a keystroke on fast input
                                 handleSubmit({ first: e.nativeEvent.text });
-                            } else if (secondInputRef.current) {
-                                secondInputRef.current.focus();
+                            } else {
+                                secondInputRef.current?.focus();
                             }
                             isSubmitting.current = false;
                         }}
                         blurOnSubmit={false}
                     />
-                    {mode === 'double' && (
-                        <TextInput
-                            ref={secondInputRef}
-                            style={[
-                                styles.input,
-                                styles.secondInput,
-                                { color: theme.textStrong, borderColor: theme.line }
-                            ]}
-                            value={secondValue}
-                            onChangeText={(text) => {
-                                onSecondValueChange(text);
-                                if (showWarning) {
-                                    clearWarning();
-                                }
-                            }}
-                            placeholder={secondPlaceholder}
-                            placeholderTextColor={theme.textTertiary}
-                            keyboardAppearance={theme.isDark ? 'dark' : 'light'}
-                            keyboardType="numbers-and-punctuation"
-                            returnKeyType="done"
-                            onSubmitEditing={(e) => {
-                                isSubmitting.current = true;
-                                handleSubmit({ second: e.nativeEvent.text });
-                                isSubmitting.current = false;
-                            }}
-                            blurOnSubmit={false}
-                        />
-                    )}
+                    <TextInput
+                        ref={secondInputRef}
+                        style={[
+                            styles.input,
+                            styles.secondInput,
+                            { color: theme.textStrong, borderColor: theme.line },
+                            mode === 'single' && styles.detachedInput,
+                        ]}
+                        pointerEvents={mode === 'double' ? 'auto' : 'none'}
+                        value={secondValue}
+                        onChangeText={(text) => {
+                            onSecondValueChange(text);
+                            if (showWarning) {
+                                clearWarning();
+                            }
+                        }}
+                        placeholder={secondPlaceholder}
+                        placeholderTextColor={theme.textTertiary}
+                        keyboardAppearance={theme.isDark ? 'dark' : 'light'}
+                        keyboardType="numbers-and-punctuation"
+                        returnKeyType="done"
+                        onSubmitEditing={(e) => {
+                            isSubmitting.current = true;
+                            handleSubmit({ second: e.nativeEvent.text });
+                            isSubmitting.current = false;
+                        }}
+                        blurOnSubmit={false}
+                    />
                 </View>
                 {mode === 'single' && suggestions.length > 0 && (
                     <View style={styles.suggestionsContainer}>
@@ -361,6 +360,15 @@ const styles = StyleSheet.create({
     },
     secondInput: {
         flex: 0.5,
+    },
+    // Keeps the reps input mounted (and focusable) in single mode so a
+    // focused reps field never unmounts mid-transition
+    detachedInput: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        width: 40,
+        opacity: 0,
     },
     warningContainer: {
         padding: 10,

@@ -1,0 +1,23 @@
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+index b5d7242..37fec7a 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+@@ -250,10 +250,18 @@ - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &
+ 
+   if (newTextInputProps.traits.keyboardType != oldTextInputProps.traits.keyboardType) {
+     _backedTextInputView.keyboardType = RCTUIKeyboardTypeFromKeyboardType(newTextInputProps.traits.keyboardType);
++    // Without the call to reloadInputViews, the keyboard will not change until the textInput field (the first
++    // responder) loses and regains focus. Mirrors the legacy-architecture behavior in RCTBaseTextInputView.
++    if (_backedTextInputView.isFirstResponder) {
++      [_backedTextInputView reloadInputViews];
++    }
+   }
+ 
+   if (newTextInputProps.traits.returnKeyType != oldTextInputProps.traits.returnKeyType) {
+     _backedTextInputView.returnKeyType = RCTUIReturnKeyTypeFromReturnKeyType(newTextInputProps.traits.returnKeyType);
++    if (_backedTextInputView.isFirstResponder) {
++      [_backedTextInputView reloadInputViews];
++    }
+   }
+ 
+   if (newTextInputProps.traits.textContentType != oldTextInputProps.traits.textContentType) {

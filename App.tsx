@@ -8,6 +8,7 @@ import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RNBootSplash from 'react-native-bootsplash';
 
@@ -61,54 +62,56 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ErrorBoundary>
-          <NavigationContainer
-            linking={linking}
-            onReady={() => RNBootSplash.hide({ fade: true })}
-          >
-            <Stack.Navigator
-              screenOptions={{
-                headerShown: false,
-                contentStyle: {
-                  backgroundColor: theme.paper,
-                },
-              }}
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <NavigationContainer
+              linking={linking}
+              onReady={() => RNBootSplash.hide({ fade: true })}
             >
-              <Stack.Screen
-                name="LiftList"
-                component={LiftPreviewListScreen}
-                options={{
+              <Stack.Navigator
+                screenOptions={{
                   headerShown: false,
+                  contentStyle: {
+                    backgroundColor: theme.paper,
+                  },
                 }}
-              />
-              <Stack.Screen
-                name="LiftEditor"
-                component={LiftEditorScreen}
-                options={{
-                  headerShown: false,
-                  presentation: 'card',
-                  animation: 'slide_from_right',
-                  gestureEnabled: true,
-                  gestureDirection: 'horizontal',
-                  fullScreenGestureEnabled: true,
-                }}
-              />
-              <Stack.Screen
-                name="Charts"
-                component={ChartScreen}
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_left',
-                  animationMatchesGesture: true,
-                  gestureEnabled: true,
-                  fullScreenGestureEnabled: true,
-                }}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
-        </ErrorBoundary>
-      </SafeAreaProvider>
+              >
+                <Stack.Screen
+                  name="LiftList"
+                  component={LiftPreviewListScreen}
+                  options={{
+                    headerShown: false,
+                  }}
+                />
+                <Stack.Screen
+                  name="LiftEditor"
+                  component={LiftEditorScreen}
+                  options={{
+                    headerShown: false,
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                    gestureEnabled: true,
+                    gestureDirection: 'horizontal',
+                    fullScreenGestureEnabled: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="Charts"
+                  component={ChartScreen}
+                  options={{
+                    headerShown: false,
+                    animation: 'slide_from_left',
+                    animationMatchesGesture: true,
+                    gestureEnabled: true,
+                    fullScreenGestureEnabled: true,
+                  }}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
