@@ -69,31 +69,87 @@ const LiftEditorScreen: React.FC = () => {
         movements: [],
     });
 
-    const [entryMode, setEntryMode] = useState<EntryMode>('single');
-    const [editingTarget, setEditingTarget] = useState<'none' | 'title' | 'movementName' | 'set'>('none');
-    const [editingMovementIndex, setEditingMovementIndex] = useState<number | null>(null);
-    const [editingSetIndex, setEditingSetIndex] = useState<number | null>(null);
-    const [isAddingNewMovement, setIsAddingNewMovement] = useState(false);
+    const NEW_MOVEMENT_INDEX = -1;
+
+    // The single source of truth for what is being edited. Everything the old
+    // implementation tracked in parallel flags (entryMode, editingTarget,
+    // editingMovementIndex, editingSetIndex, isAddingNewMovement) derives
+    // from this one value.
+    type EditingState =
+        | { target: 'none' }
+        | { target: 'title' }
+        | { target: 'movementName'; movementIndex: number }
+        | { target: 'set'; movementIndex: number; setIndex: number };
+
+    const [editing, setEditingState] = useState<EditingState>({ target: 'none' });
+    const editingRef = useRef<EditingState>(editing);
+    const liftRef = useRef<Lift>(lift);
+    // Ignore keyboard-hide resets briefly after an intentional transition
+    const dismissGuardUntilRef = useRef(0);
+
     const [allLifts, setAllLifts] = useState<{ [id: string]: Lift }>({});
     const [firstInputValue, setFirstInputValue] = useState('');
+    const [secondInputValue, setSecondInputValue] = useState('');
+    const [focusRequest, setFocusRequest] = useState(0);
     const [pendingDeleteMovementIndex, setPendingDeleteMovementIndex] = useState<number | null>(null);
     const [pendingDeleteSet, setPendingDeleteSet] = useState<{ movementIndex: number; setIndex: number } | null>(null);
-    const [shouldAutoFocusOnLoad, setShouldAutoFocusOnLoad] = useState(false);
-    const [shouldFocusSetAfterMovementSubmit, setShouldFocusSetAfterMovementSubmit] = useState(false);
-    const [shouldFocusSetOnEmptyLineClick, setShouldFocusSetOnEmptyLineClick] = useState(false);
-    const [shouldFocusOnEdit, setShouldFocusOnEdit] = useState(false);
-    const [focusNextSetCounter, setFocusNextSetCounter] = useState(0);
-    const [entryFooterResetKey, setEntryFooterResetKey] = useState(0);
-    const isTransitioningToSetRef = useRef(false);
-    const editingTargetRef = useRef<'none' | 'title' | 'movementName' | 'set'>(editingTarget);
-    const isAddingNewMovementRef = useRef(isAddingNewMovement);
-    const editingMovementIndexRef = useRef<number | null>(editingMovementIndex);
-    const pendingResetKeyIncrementRef = useRef(false);
-    const justDismissedRef = useRef(false);
-    const isTransitioningToSetEntryRef = useRef(false);
-    const isIntentionalEditTransitionRef = useRef(false);
-    const isTransitioningFromRepBoxRef = useRef(false);
-    const pendingRepBoxResetKeyIncrementRef = useRef(false);
+
+    const editingTarget = editing.target === 'movementName' ? 'movementName' : editing.target;
+    const editingMovementIndex =
+        editing.target === 'movementName' || editing.target === 'set' ? editing.movementIndex : null;
+    const editingSetIndex = editing.target === 'set' ? editing.setIndex : null;
+    const isAddingNewMovement = editing.target === 'movementName' && editing.movementIndex === NEW_MOVEMENT_INDEX;
+    const entryMode: EntryMode = editing.target === 'set' ? 'double' : 'single';
+
+    // Update the lift in state and keep liftRef in sync for stable callbacks
+    const updateLift = React.useCallback((next: Lift) => {
+        liftRef.current = next;
+        setLift(next);
+    }, []);
+
+    // Field values that belong to an editing state (existing title/name/set)
+    const valuesFor = (next: EditingState): { first: string; second: string } => {
+        const l = liftRef.current;
+        switch (next.target) {
+            case 'title':
+                return { first: l.title, second: '' };
+            case 'movementName':
+                return {
+                    first: next.movementIndex >= 0 ? (l.movements[next.movementIndex]?.name ?? '') : '',
+                    second: '',
+                };
+            case 'set': {
+                const set = next.movementIndex >= 0
+                    ? l.movements[next.movementIndex]?.sets[next.setIndex]
+                    : undefined;
+                return { first: set?.weight ?? '', second: set?.reps ?? '' };
+            }
+            default:
+                return { first: '', second: '' };
+        }
+    };
+
+    // Atomically switch editing target: updates the ref synchronously (so
+    // focus/dismiss handlers never see stale state), seeds the footer's
+    // field values, and optionally requests focus or dismisses the keyboard.
+    const setEditing = React.useCallback((
+        next: EditingState,
+        opts?: { focus?: boolean; first?: string; second?: string; dismissKeyboard?: boolean }
+    ) => {
+        editingRef.current = next;
+        dismissGuardUntilRef.current = Date.now() + 400;
+        setEditingState(next);
+        const values = valuesFor(next);
+        setFirstInputValue(opts?.first !== undefined ? opts.first : values.first);
+        setSecondInputValue(opts?.second !== undefined ? opts.second : values.second);
+        if (opts?.focus) {
+            setFocusRequest(c => c + 1);
+        }
+        if (opts?.dismissKeyboard) {
+            Keyboard.dismiss();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const scrollViewRef = useRef<ScrollView>(null);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -105,15 +161,11 @@ const LiftEditorScreen: React.FC = () => {
     const addSetLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
     const scrollRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const NEW_MOVEMENT_INDEX = -1;
-
     const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
     const [selectedDate, setSelectedDate] = useState(() => {
         const [year, month, day] = lift.date.split('-').map(Number);
         return new Date(year, month - 1, day);
     });
-
-    const isSubmitting = useRef<boolean>(false);
 
     useEffect(() => {
         const loadAllLifts = async () => {
@@ -130,12 +182,7 @@ const LiftEditorScreen: React.FC = () => {
             loadLift(route.params.liftId);
         } else {
             // New lift - focus the title input
-            setEntryMode('single');
-            setEditingMovementIndex(null);
-            setEditingSetIndex(null);
-            setEditingTarget('title');
-            setIsAddingNewMovement(false);
-            setShouldAutoFocusOnLoad(true);
+            setEditing({ target: 'title' }, { focus: true });
         }
     }, [route.params?.liftId]);
 
@@ -316,103 +363,6 @@ const LiftEditorScreen: React.FC = () => {
         lift.movements,
     ]);
 
-    // Reset shouldAutoFocusOnLoad after it's been used
-    useEffect(() => {
-        if (shouldAutoFocusOnLoad) {
-            const timeout = setTimeout(() => {
-                setShouldAutoFocusOnLoad(false);
-            }, 300);
-            return () => clearTimeout(timeout);
-        }
-    }, [shouldAutoFocusOnLoad]);
-
-    // Reset shouldFocusSetAfterMovementSubmit after it's been used
-    useEffect(() => {
-        if (shouldFocusSetAfterMovementSubmit) {
-            const timeout = setTimeout(() => {
-                setShouldFocusSetAfterMovementSubmit(false);
-            }, 300);
-            return () => clearTimeout(timeout);
-        }
-    }, [shouldFocusSetAfterMovementSubmit]);
-
-    // Reset shouldFocusSetOnEmptyLineClick after it's been used
-    useEffect(() => {
-        if (shouldFocusSetOnEmptyLineClick) {
-            const timeout = setTimeout(() => {
-                setShouldFocusSetOnEmptyLineClick(false);
-            }, 300);
-            return () => clearTimeout(timeout);
-        }
-    }, [shouldFocusSetOnEmptyLineClick]);
-
-    // Reset shouldFocusOnEdit after it's been used
-    useEffect(() => {
-        if (shouldFocusOnEdit) {
-            const timeout = setTimeout(() => {
-                setShouldFocusOnEdit(false);
-            }, 300);
-            return () => clearTimeout(timeout);
-        }
-    }, [shouldFocusOnEdit]);
-
-
-    // Sync firstInputValue when editingTarget changes
-    const previousEditingTargetRef = useRef<'none' | 'title' | 'movementName' | 'set'>('none');
-    useEffect(() => {
-        // Don't overwrite refs if we're in the middle of an intentional edit transition
-        // (click handlers set refs immediately and we don't want useEffect to undo that)
-        if (!isIntentionalEditTransitionRef.current) {
-            editingTargetRef.current = editingTarget;
-            isAddingNewMovementRef.current = isAddingNewMovement;
-            editingMovementIndexRef.current = editingMovementIndex;
-        }
-
-        // Only update when editingTarget actually changes, not on every render
-        if (previousEditingTargetRef.current !== editingTarget) {
-            previousEditingTargetRef.current = editingTarget;
-
-            let newValue = '';
-            if (editingTarget === 'title') {
-                newValue = lift.title;
-            } else if (editingTarget === 'movementName' && editingMovementIndex !== null && editingMovementIndex >= 0) {
-                const movement = lift.movements[editingMovementIndex];
-                newValue = movement ? movement.name : '';
-            } else if (editingTarget === 'movementName' && isAddingNewMovement) {
-                newValue = '';
-            } else if (editingTarget === 'set' && editingMovementIndex !== null && editingMovementIndex >= 0) {
-                const movement = lift.movements[editingMovementIndex];
-                const set = movement && editingSetIndex !== null && editingSetIndex < movement.sets.length
-                    ? movement.sets[editingSetIndex]
-                    : null;
-                newValue = set ? set.weight : '';
-            } else if (editingTarget === 'none') {
-                newValue = '';
-            }
-
-            setFirstInputValue(newValue);
-        }
-    }, [editingTarget, editingMovementIndex, editingSetIndex, lift.title, lift.movements, isAddingNewMovement]);
-
-    // Handle reset key increment after state updates are applied
-    useEffect(() => {
-        if (pendingResetKeyIncrementRef.current && editingTarget === 'set') {
-            pendingResetKeyIncrementRef.current = false;
-            setEntryFooterResetKey(prev => prev + 1);
-            setTimeout(() => {
-                isTransitioningToSetRef.current = false;
-            }, 100);
-        }
-    }, [editingTarget]);
-
-    // Handle reset key increment for rep box transitions after state updates are applied
-    useEffect(() => {
-        if (pendingRepBoxResetKeyIncrementRef.current && (editingTarget === 'title' || editingTarget === 'movementName')) {
-            pendingRepBoxResetKeyIncrementRef.current = false;
-            setEntryFooterResetKey(prev => prev + 1);
-        }
-    }, [editingTarget]);
-
     const loadLift = async (liftId: string) => {
         try {
             const liftData = await retrieveLift(liftId);
@@ -430,7 +380,7 @@ const LiftEditorScreen: React.FC = () => {
                 date: liftData.date || (liftId.match(/^\d{4}-\d{2}-\d{2}$/) ? liftId : todayISO())
             };
 
-            setLift(updatedLiftData);
+            updateLift(updatedLiftData);
 
             // Determine auto-focus behavior based on lift state
             const hasTitle = updatedLiftData.title.trim().length > 0;
@@ -440,37 +390,19 @@ const LiftEditorScreen: React.FC = () => {
 
             if (!hasTitle) {
                 // New lift: focus on title
-                setEntryMode('single');
-                setEditingTarget('title');
-                setEditingMovementIndex(null);
-                setEditingSetIndex(null);
-                setIsAddingNewMovement(false);
-                setShouldAutoFocusOnLoad(true);
+                setEditing({ target: 'title' }, { focus: true });
             } else if (!hasMovements) {
                 // Lift with only title: focus on movement
-                setEntryMode('single');
-                setEditingTarget('movementName');
-                setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                setEditingSetIndex(null);
-                setIsAddingNewMovement(true);
-                setShouldAutoFocusOnLoad(true);
+                setEditing({ target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX }, { focus: true });
             } else if (!lastMovementHasSets) {
                 // Lift with movement at bottom with no sets: focus on set weight
-                const lastMovementIndex = updatedLiftData.movements.length - 1;
-                setEntryMode('double');
-                setEditingTarget('set');
-                setEditingMovementIndex(lastMovementIndex);
-                setEditingSetIndex(0);
-                setIsAddingNewMovement(false);
-                setShouldAutoFocusOnLoad(true);
+                setEditing(
+                    { target: 'set', movementIndex: updatedLiftData.movements.length - 1, setIndex: 0 },
+                    { focus: true }
+                );
             } else {
                 // Other cases: no auto-focus
-                setEntryMode('single');
-                setEditingTarget('none');
-                setEditingMovementIndex(null);
-                setEditingSetIndex(null);
-                setIsAddingNewMovement(false);
-                setShouldAutoFocusOnLoad(false);
+                setEditing({ target: 'none' });
             }
 
             setIsLoading(false);
@@ -500,128 +432,73 @@ const LiftEditorScreen: React.FC = () => {
     };
 
     const handleEntrySubmit = ({ first, second }: { first: string; second?: string }) => {
+        const current = editingRef.current;
+
         if (entryMode === 'single') {
-            if (editingTarget === 'title' || lift.title === '') {
+            if (current.target === 'title' || lift.title === '') {
                 const newLift = { ...lift, title: first };
-                setLift(newLift);
+                updateLift(newLift);
                 saveLift(newLift);
 
-                // Check if this is an existing lift (being edited) vs a new lift
-                const isExistingLift = !!route.params?.liftId;
-                const hasMovements = newLift.movements.length > 0;
-
-                if (isExistingLift) {
-                    // Editing existing title - check if movements exist
-                    if (hasMovements) {
-                        // Has movements - dismiss footer but keep it visible
-                        setEditingTarget('none');
-                        setEditingMovementIndex(null);
-                        setEditingSetIndex(null);
-                        setEntryMode('single');
-                        setIsAddingNewMovement(false);
-                        setShouldFocusOnEdit(false);
-                        editingTargetRef.current = 'none';
-                        isAddingNewMovementRef.current = false;
-                        justDismissedRef.current = true;
-                        Keyboard.dismiss();
-                        setTimeout(() => {
-                            justDismissedRef.current = false;
-                        }, 300);
-                    } else {
-                        // No movements - automatically transition to adding a new movement
-                        setIsAddingNewMovement(true);
-                        setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                        setEditingSetIndex(null);
-                        setEditingTarget('movementName');
-                        setEntryMode('single');
-                        setFirstInputValue('');
-                    }
+                if (route.params?.liftId && newLift.movements.length > 0) {
+                    // Edited an existing title on a lift that has movements - dismiss
+                    setEditing({ target: 'none' }, { dismissKeyboard: true });
                 } else {
-                    // New lift - automatically transition to adding a new movement
-                    setIsAddingNewMovement(true);
-                    setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                    setEditingSetIndex(null);
-                    setEditingTarget('movementName');
-                    setEntryMode('single');
-                    setFirstInputValue('');
+                    // Otherwise transition straight to adding the first movement
+                    setEditing({ target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX }, { first: '' });
                 }
             } else {
-                // Check if we're editing an existing movement
-                // Use editingMovementIndex >= 0 to identify existing movements (NEW_MOVEMENT_INDEX is -1)
-                // Also check that the movement actually exists in the lift
-                const movementExists = editingMovementIndex !== null &&
-                    editingMovementIndex >= 0 &&
-                    editingMovementIndex < lift.movements.length;
                 const isExistingMovement =
-                    editingTarget === 'movementName' &&
-                    movementExists;
+                    current.target === 'movementName' &&
+                    current.movementIndex >= 0 &&
+                    current.movementIndex < lift.movements.length;
 
                 if (isExistingMovement) {
+                    const movementIndex = current.movementIndex;
                     const newLift = {
                         ...lift,
                         movements: lift.movements.map((m, idx) =>
-                            idx === editingMovementIndex ? { ...m, name: first } : m
+                            idx === movementIndex ? { ...m, name: first } : m
                         )
                     };
-                    setLift(newLift);
+                    updateLift(newLift);
                     saveLift(newLift);
 
-                    // Check if movement has no sets - if so, start set entry
-                    const updatedMovement = newLift.movements[editingMovementIndex];
-                    const hasNoSets = updatedMovement && updatedMovement.sets.length === 0;
-                    setIsAddingNewMovement(false);
-                    if (hasNoSets) {
-                        // Movement has no sets - start set entry
-                        isTransitioningToSetEntryRef.current = true;
-                        setEditingSetIndex(0);
-                        setEditingTarget('set');
-                        setEntryMode('double');
-                        setShouldFocusSetAfterMovementSubmit(true);
-                        editingTargetRef.current = 'set';
-                        isAddingNewMovementRef.current = false;
-                        setEntryFooterResetKey(prev => prev + 1);
-                        setTimeout(() => {
-                            isTransitioningToSetEntryRef.current = false;
-                        }, 100);
+                    if (newLift.movements[movementIndex].sets.length === 0) {
+                        // Renamed movement has no sets yet - start set entry
+                        setEditing({ target: 'set', movementIndex, setIndex: 0 }, { focus: true });
                     } else {
                         // Movement has sets - dismiss footer but keep it visible
-                        setEditingTarget('none');
-                        setEditingMovementIndex(null);
-                        setEntryMode('single');
-                        setShouldFocusOnEdit(false);
-                        editingTargetRef.current = 'none';
-                        isAddingNewMovementRef.current = false;
-                        justDismissedRef.current = true;
-                        Keyboard.dismiss();
-                        setTimeout(() => {
-                            justDismissedRef.current = false;
-                        }, 300);
+                        setEditing({ target: 'none' }, { dismissKeyboard: true });
                     }
                 } else {
+                    // Adding a new movement; move on to entering its first set
                     const newLift = {
                         ...lift,
                         movements: [...lift.movements, { name: first, sets: [] }],
                     };
-                    setLift(newLift);
-                    setEditingMovementIndex(lift.movements.length);
-                    setEditingSetIndex(0);
-                    setEditingTarget('set');
-                    setEntryMode('double');
-                    setIsAddingNewMovement(false);
-                    setShouldFocusSetAfterMovementSubmit(true);
+                    updateLift(newLift);
+                    setEditing(
+                        { target: 'set', movementIndex: newLift.movements.length - 1, setIndex: 0 },
+                        { focus: true }
+                    );
                 }
             }
-        } else if (entryMode === 'double' && second) {
-            const isExistingSet = editingTarget === 'set' && editingSetIndex !== null && editingMovementIndex !== null && editingMovementIndex >= 0 && editingMovementIndex < lift.movements.length && lift.movements[editingMovementIndex].sets[editingSetIndex];
+        } else if (entryMode === 'double' && second && current.target === 'set') {
+            const { movementIndex, setIndex } = current;
+            const isExistingSet =
+                movementIndex >= 0 &&
+                movementIndex < lift.movements.length &&
+                !!lift.movements[movementIndex].sets[setIndex];
 
             const newLift = {
                 ...lift,
                 movements: lift.movements.map((m, idx) => {
-                    if (idx !== editingMovementIndex) return m;
+                    if (idx !== movementIndex) return m;
                     if (isExistingSet) {
                         // Editing an existing set - update it
                         const newSets = m.sets.slice();
-                        newSets[editingSetIndex!] = { weight: first, reps: second };
+                        newSets[setIndex] = { weight: first, reps: second };
                         return { ...m, sets: newSets };
                     }
                     // Adding a new set
@@ -629,52 +506,19 @@ const LiftEditorScreen: React.FC = () => {
                 })
             };
 
-            setLift(newLift);
+            updateLift(newLift);
             saveLift(newLift);
 
-            if (isExistingSet) {
-                // Check if this was the last set in the movement
-                const movement = newLift.movements[editingMovementIndex!];
-                const isLastSet = editingSetIndex === movement.sets.length - 1;
-
-                if (isLastSet) {
-                    // After editing the last set, add a new set entry
-                    setEditingSetIndex(movement.sets.length);
-                    setEditingTarget('set');
-                    setEntryMode('double');
-                    setShouldFocusOnEdit(false);
-                    setFocusNextSetCounter(c => c + 1);
-                    setTimeout(() => {
-                        scrollViewRef.current?.scrollToEnd({ animated: true });
-                    }, 100);
-                } else {
-                    // After editing a set in the middle, dismiss the footer but keep it visible
-                    setEditingTarget('none');
-                    setEditingMovementIndex(null);
-                    setEditingSetIndex(null);
-                    setEntryMode('single');
-                    setIsAddingNewMovement(false);
-                    setShouldFocusOnEdit(false);
-                    editingTargetRef.current = 'none';
-                    isAddingNewMovementRef.current = false;
-                    justDismissedRef.current = true;
-                    Keyboard.dismiss();
-                    setTimeout(() => {
-                        justDismissedRef.current = false;
-                    }, 300);
-                }
+            const isLastSet = setIndex === newLift.movements[movementIndex]?.sets.length - 1;
+            if (isExistingSet && !isLastSet) {
+                // After editing a set in the middle, dismiss the footer but keep it visible
+                setEditing({ target: 'none' }, { dismissKeyboard: true });
             } else {
-                // Adding a new set - prepare for another set entry
-                if (
-                    editingMovementIndex !== null &&
-                    editingMovementIndex >= 0 &&
-                    editingMovementIndex < newLift.movements.length
-                ) {
-                    setEditingSetIndex(newLift.movements[editingMovementIndex].sets.length);
-                    setEditingTarget('set');
-                }
-                setEntryMode('double');
-                setFocusNextSetCounter(c => c + 1);
+                // After adding a set (or editing the last one), line up the next set entry
+                setEditing(
+                    { target: 'set', movementIndex, setIndex: newLift.movements[movementIndex].sets.length },
+                    { focus: true, first: '', second: '' }
+                );
                 setTimeout(() => {
                     scrollViewRef.current?.scrollToEnd({ animated: true });
                 }, 100);
@@ -682,7 +526,7 @@ const LiftEditorScreen: React.FC = () => {
         }
     };
 
-    const handleMovementLongPress = (index: number) => {
+    const handleMovementLongPress = React.useCallback((index: number) => {
         setPendingDeleteMovementIndex(index);
         Alert.alert(
             'Delete movement?',
@@ -697,39 +541,23 @@ const LiftEditorScreen: React.FC = () => {
                     text: 'Delete',
                     style: 'destructive',
                     onPress: () => {
+                        const currentLift = liftRef.current;
                         const newLift = {
-                            ...lift,
-                            movements: lift.movements.filter((_, i) => i !== index),
+                            ...currentLift,
+                            movements: currentLift.movements.filter((_, i) => i !== index),
                         };
-                        setLift(newLift);
+                        updateLift(newLift);
                         saveLift(newLift);
-                        // Dismiss footer after delete
-                        setEditingTarget('none');
-                        setEditingMovementIndex(null);
-                        setEditingSetIndex(null);
-                        setEntryMode('single');
-                        setIsAddingNewMovement(false);
-                        setShouldFocusOnEdit(false);
-                        editingTargetRef.current = 'none';
-                        isAddingNewMovementRef.current = false;
-                        justDismissedRef.current = true;
-                        Keyboard.dismiss();
-                        setTimeout(() => {
-                            justDismissedRef.current = false;
-                        }, 300);
+                        setEditing({ target: 'none' }, { dismissKeyboard: true });
                         setPendingDeleteMovementIndex(null);
-                        setAllLifts(prev => {
-                            const updated = { ...prev };
-                            updated[newLift.id] = newLift;
-                            return updated;
-                        });
+                        setAllLifts(prev => ({ ...prev, [newLift.id]: newLift }));
                     },
                 },
             ]
         );
-    };
+    }, [setEditing, updateLift]);
 
-    const handleSetLongPress = (movementIndex: number, setIndex: number) => {
+    const handleSetLongPress = React.useCallback((movementIndex: number, setIndex: number) => {
         setPendingDeleteSet({ movementIndex, setIndex });
         Alert.alert(
             'Delete set?',
@@ -744,57 +572,34 @@ const LiftEditorScreen: React.FC = () => {
                     text: 'Delete',
                     style: 'destructive',
                     onPress: () => {
+                        const currentLift = liftRef.current;
                         const newLift = {
-                            ...lift,
-                            movements: lift.movements.map((m, mi) => {
+                            ...currentLift,
+                            movements: currentLift.movements.map((m, mi) => {
                                 if (mi !== movementIndex) return m;
                                 return { ...m, sets: m.sets.filter((_, si) => si !== setIndex) };
                             })
                         };
-                        setLift(newLift);
+                        updateLift(newLift);
                         saveLift(newLift);
-                        // Dismiss footer after delete
-                        setEditingTarget('none');
-                        setEditingMovementIndex(null);
-                        setEditingSetIndex(null);
-                        setEntryMode('single');
-                        setIsAddingNewMovement(false);
-                        setShouldFocusOnEdit(false);
-                        editingTargetRef.current = 'none';
-                        isAddingNewMovementRef.current = false;
-                        justDismissedRef.current = true;
-                        Keyboard.dismiss();
-                        setTimeout(() => {
-                            justDismissedRef.current = false;
-                        }, 300);
+                        setEditing({ target: 'none' }, { dismissKeyboard: true });
                         setPendingDeleteSet(null);
-                        setAllLifts(prev => {
-                            const updated = { ...prev };
-                            updated[newLift.id] = newLift;
-                            return updated;
-                        });
+                        setAllLifts(prev => ({ ...prev, [newLift.id]: newLift }));
                     },
                 },
             ]
         );
-    };
+    }, [setEditing, updateLift]);
 
-    const handleKeyboardDismiss = () => {
-        // Only reset states if we're not actively editing and not transitioning to set editing
-        // Also don't reset if we're in an intentional edit transition (clicking to edit something)
-        // or transitioning from rep box to movement/title, or transitioning to set entry
-        if (!isSubmitting.current &&
-            !isTransitioningToSetRef.current &&
-            !isTransitioningToSetEntryRef.current &&
-            !isIntentionalEditTransitionRef.current &&
-            !isTransitioningFromRepBoxRef.current) {
-            setEntryMode('single');
-            setEditingMovementIndex(null);
-            setEditingSetIndex(null);
-            setEditingTarget('none');
-            setIsAddingNewMovement(false);
+    const handleKeyboardDismiss = React.useCallback(() => {
+        // Ignore hide events that are part of an intentional transition
+        if (Date.now() < dismissGuardUntilRef.current) {
+            return;
         }
-    };
+        if (editingRef.current.target !== 'none') {
+            setEditing({ target: 'none' });
+        }
+    }, [setEditing]);
 
     const handleDeleteLift = () => {
         Alert.alert(
@@ -840,7 +645,7 @@ const LiftEditorScreen: React.FC = () => {
             date: dateString,
         };
 
-        setLift(updatedLift);
+        updateLift(updatedLift);
         saveLift(updatedLift);
     };
 
@@ -1120,144 +925,14 @@ const LiftEditorScreen: React.FC = () => {
 
     const contentBottomPadding = footerHeight + keyboardHeight + 48;
 
-    const activeMovement =
-        editingMovementIndex !== null &&
-            editingMovementIndex >= 0 &&
-            editingMovementIndex < lift.movements.length
-            ? lift.movements[editingMovementIndex]
-            : null;
-
-    const activeSet =
-        activeMovement &&
-            editingSetIndex !== null &&
-            editingSetIndex < activeMovement.sets.length
-            ? activeMovement.sets[editingSetIndex]
-            : null;
-
-    // Debug: Log when computing initialValues for EntryFooter
-    const computedInitialValues = React.useMemo(() => {
-        let values;
-        if (editingTarget === 'title') {
-            values = { first: lift.title };
-        } else if (editingTarget === 'movementName' && activeMovement) {
-            values = { first: activeMovement.name };
-        } else if (editingTarget === 'set' && activeSet) {
-            values = {
-                first: activeSet.weight || '',
-                second: activeSet.reps || '',
-            };
-        } else {
-            values = undefined;
-        }
-        return values;
-    }, [editingTarget, editingMovementIndex, editingSetIndex, activeMovement, activeSet, lift.title]);
-
-    const scrollToEnd = React.useCallback(() => {
-        if (!scrollViewRef.current) {
-            return;
-        }
-        scrollViewRef.current.scrollToEnd({ animated: true });
-    }, []);
-
     const handleEntryFooterFocus = React.useCallback(() => {
-        // Use refs to get current values (no closure issues)
-        const currentEditingTarget = editingTargetRef.current;
-        const currentIsAddingNewMovement = isAddingNewMovementRef.current;
-        const currentEditingMovementIndex = editingMovementIndexRef.current;
-
-        // If we're in an intentional edit transition (user clicked to edit something), don't interfere
-        if (isIntentionalEditTransitionRef.current) {
-            attemptScrollToActiveTarget();
-            return;
+        // If the footer was dismissed and the lift has a title, focusing the
+        // field means the user wants to add a new movement.
+        if (editingRef.current.target === 'none' && liftRef.current.title.trim().length > 0) {
+            setEditing({ target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX }, { first: '' });
         }
-
-        // If we're transitioning from rep box to movement/title, don't interfere
-        if (isTransitioningFromRepBoxRef.current) {
-            attemptScrollToActiveTarget();
-            return;
-        }
-
-        // If we're transitioning to set entry, don't do anything
-        if (isTransitioningToSetEntryRef.current) {
-            return;
-        }
-
-        // If we just dismissed, don't do anything
-        if (justDismissedRef.current) {
-            return;
-        }
-
-        // Don't show movement bubble if we're editing a set or transitioning to set editing
-        if (isTransitioningToSetRef.current) {
-            attemptScrollToActiveTarget();
-            return;
-        }
-
-        // Also check if we're in set editing mode
-        if (currentEditingTarget === 'set') {
-            attemptScrollToActiveTarget();
-            return;
-        }
-
-        // If we're editing title, don't do anything else
-        if (currentEditingTarget === 'title') {
-            attemptScrollToActiveTarget();
-            return;
-        }
-
-        // If footer was dismissed (none mode), start adding a new movement
-        // ONLY use the ref value, not the stale state from closure
-        // Don't do this if we're transitioning from rep box
-        const isDismissed = currentEditingTarget === 'none';
-        if (isDismissed && lift.title.trim().length > 0 && !isTransitioningFromRepBoxRef.current) {
-            setEditingTarget('movementName');
-            setIsAddingNewMovement(true);
-            setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-            setEditingSetIndex(null);
-            editingTargetRef.current = 'movementName';
-            isAddingNewMovementRef.current = true;
-            attemptScrollToActiveTarget();
-            return;
-        }
-
-        // If user focuses on movement entry field, show the empty movement bubble
-        // Only show new movement bubble when adding a new movement, not when editing an existing one
-        const isEditingExistingMovement = currentEditingMovementIndex !== null && currentEditingMovementIndex >= 0;
-
-        // If editing an existing movement, just scroll to it
-        if (isEditingExistingMovement && currentEditingTarget === 'movementName') {
-            attemptScrollToActiveTarget();
-            return;
-        }
-
-        // Only show bubble if we're in movementName mode but not already adding a new movement
-        const shouldShowMovementBubble =
-            lift.title.trim().length > 0 &&
-            !isEditingExistingMovement &&
-            currentEditingTarget === 'movementName' &&
-            !currentIsAddingNewMovement;
-
-        if (shouldShowMovementBubble && !currentIsAddingNewMovement) {
-            setIsAddingNewMovement(true);
-            setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-            setEditingSetIndex(null);
-            setEditingTarget('movementName');
-            setEntryMode('single');
-            setFirstInputValue('');
-        }
-
         attemptScrollToActiveTarget();
-    }, [
-        attemptScrollToActiveTarget,
-        editingMovementIndex,
-        editingSetIndex,
-        editingTarget,
-        entryMode,
-        keyboardHeight,
-        scrollToEnd,
-        isAddingNewMovement,
-        lift.title,
-    ]);
+    }, [attemptScrollToActiveTarget, setEditing]);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
@@ -1318,29 +993,7 @@ const LiftEditorScreen: React.FC = () => {
                                         type="title"
                                         content={lift.title}
                                         onTitlePress={() => {
-                                            // Check if we're transitioning from rep box (double mode with set editing)
-                                            const isFromRepBox = entryMode === 'double' && editingTarget === 'set';
-                                            if (isFromRepBox) {
-                                                isTransitioningFromRepBoxRef.current = true;
-                                                // Mark that we need to increment reset key after state updates
-                                                pendingRepBoxResetKeyIncrementRef.current = true;
-                                            }
-                                            // Prevent useEffect from overwriting refs during this transition
-                                            isIntentionalEditTransitionRef.current = true;
-                                            // Update refs immediately to prevent race conditions with handleEntryFooterFocus
-                                            editingTargetRef.current = 'title';
-                                            isAddingNewMovementRef.current = false;
-                                            editingMovementIndexRef.current = null;
-                                            setEntryMode('single');
-                                            setEditingMovementIndex(null);
-                                            setEditingSetIndex(null);
-                                            setEditingTarget('title');
-                                            setIsAddingNewMovement(false);
-                                            setShouldFocusOnEdit(true);
-                                            setTimeout(() => {
-                                                isIntentionalEditTransitionRef.current = false;
-                                                isTransitioningFromRepBoxRef.current = false;
-                                            }, 200);
+                                            setEditing({ target: 'title' }, { focus: true });
                                         }}
                                         isLast={lift.movements.length === 0}
                                         isTitleHighlighted={editingTarget === 'title'}
@@ -1363,77 +1016,18 @@ const LiftEditorScreen: React.FC = () => {
                                             type="movement"
                                             content={movement}
                                             onMovementPress={() => {
-                                                // Check if we're transitioning from rep box (double mode with set editing)
-                                                const isFromRepBox = entryMode === 'double' && editingTarget === 'set';
-                                                if (isFromRepBox) {
-                                                    isTransitioningFromRepBoxRef.current = true;
-                                                    // Mark that we need to increment reset key after state updates
-                                                    pendingRepBoxResetKeyIncrementRef.current = true;
-                                                }
-                                                // Prevent useEffect from overwriting refs during this transition
-                                                isIntentionalEditTransitionRef.current = true;
-                                                // Update refs immediately to prevent race conditions with handleEntryFooterFocus
-                                                editingTargetRef.current = 'movementName';
-                                                isAddingNewMovementRef.current = false;
-                                                editingMovementIndexRef.current = index;
-                                                setIsAddingNewMovement(false);
-                                                setEditingMovementIndex(index);
-                                                setEditingSetIndex(null);
-                                                setEditingTarget('movementName');
-                                                setEntryMode('single');
-                                                setShouldFocusOnEdit(true);
-                                                setTimeout(() => {
-                                                    isIntentionalEditTransitionRef.current = false;
-                                                    isTransitioningFromRepBoxRef.current = false;
-                                                }, 200);
+                                                setEditing({ target: 'movementName', movementIndex: index }, { focus: true });
                                             }}
                                             onMovementLongPress={() => handleMovementLongPress(index)}
                                             onSetPress={(setIdx) => {
-                                                // Prevent useEffect from overwriting refs during this transition
-                                                isIntentionalEditTransitionRef.current = true;
-                                                // Update refs immediately to prevent race conditions with handleEntryFooterFocus
-                                                editingTargetRef.current = 'set';
-                                                isAddingNewMovementRef.current = false;
-                                                editingMovementIndexRef.current = index;
-                                                setIsAddingNewMovement(false);
-                                                setEditingMovementIndex(index);
-                                                setEditingSetIndex(setIdx);
-                                                setEditingTarget('set');
-                                                setEntryMode('double');
-                                                setShouldFocusOnEdit(true);
-                                                setTimeout(() => {
-                                                    isIntentionalEditTransitionRef.current = false;
-                                                }, 100);
+                                                setEditing({ target: 'set', movementIndex: index, setIndex: setIdx }, { focus: true });
                                             }}
                                             onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
                                             onEmptyLinePress={() => {
-                                                const hasTextToClear = firstInputValue.trim().length > 0;
-
-                                                // Set the transition flag first (synchronous, no closure issues)
-                                                isTransitioningToSetRef.current = true;
-                                                // Update all state - React will batch these updates
-                                                setIsAddingNewMovement(false);
-                                                setEditingMovementIndex(index);
-                                                setEditingSetIndex(lift.movements[index].sets.length);
-                                                setEditingTarget('set');
-                                                setEntryMode('double');
-                                                setFirstInputValue('');
-                                                setShouldFocusSetOnEmptyLineClick(true);
-                                                // Update refs immediately (synchronous)
-                                                editingTargetRef.current = 'set';
-                                                isAddingNewMovementRef.current = false;
-
-                                                // Only increment reset key if there's text to clear
-                                                // Use useEffect to ensure state updates are applied before remount
-                                                if (hasTextToClear) {
-                                                    // Set flag to increment reset key after state updates
-                                                    pendingResetKeyIncrementRef.current = true;
-                                                } else {
-                                                    // No text to clear, just clear the transition flag
-                                                    setTimeout(() => {
-                                                        isTransitioningToSetRef.current = false;
-                                                    }, 100);
-                                                }
+                                                setEditing(
+                                                    { target: 'set', movementIndex: index, setIndex: lift.movements[index].sets.length },
+                                                    { focus: true, first: '', second: '' }
+                                                );
                                             }}
                                             onSetLayout={(setIdx, layout) => registerSetLayout(index, setIdx, layout)}
                                             onAddSetLayout={(layout) => registerAddSetLayout(index, layout)}
@@ -1478,16 +1072,10 @@ const LiftEditorScreen: React.FC = () => {
                                         {!isAddingNewMovement && (
                                             <Pressable
                                                 onPress={() => {
-                                                    const hasTextToClear = firstInputValue.trim().length > 0;
-                                                    setIsAddingNewMovement(true);
-                                                    setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                                                    setEditingSetIndex(null);
-                                                    setEditingTarget('movementName');
-                                                    setEntryMode('single');
-                                                    setFirstInputValue('');
-                                                    if (hasTextToClear) {
-                                                        setEntryFooterResetKey(prev => prev + 1);
-                                                    }
+                                                    setEditing(
+                                                        { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
+                                                        { first: '' }
+                                                    );
                                                 }}
                                                 android_ripple={null}
                                             >
@@ -1509,24 +1097,16 @@ const LiftEditorScreen: React.FC = () => {
                                                     isMovementNameHighlighted={isAddingNewMovement}
                                                     prependEmptyLine={false}
                                                     onMovementPress={() => {
-                                                        setIsAddingNewMovement(true);
-                                                        setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                                                        setEditingSetIndex(null);
-                                                        setEditingTarget('movementName');
-                                                        setEntryMode('single');
-                                                        setFirstInputValue('');
+                                                        setEditing(
+                                                            { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
+                                                            { first: '', focus: true }
+                                                        );
                                                     }}
                                                     onEmptyLinePress={() => {
-                                                        const hasTextToClear = firstInputValue.trim().length > 0;
-                                                        setIsAddingNewMovement(true);
-                                                        setEditingMovementIndex(NEW_MOVEMENT_INDEX);
-                                                        setEditingSetIndex(null);
-                                                        setEditingTarget('movementName');
-                                                        setEntryMode('single');
-                                                        setFirstInputValue('');
-                                                        if (hasTextToClear) {
-                                                            setEntryFooterResetKey(prev => prev + 1);
-                                                        }
+                                                        setEditing(
+                                                            { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
+                                                            { first: '', focus: true }
+                                                        );
                                                     }}
                                                     isLast={true}
                                                     onAddSetLayout={(layout) => registerAddSetLayout(NEW_MOVEMENT_INDEX, layout)}
@@ -1542,10 +1122,12 @@ const LiftEditorScreen: React.FC = () => {
                     {!isLoading && (
                         <View onLayout={handleFooterLayout}>
                             <EntryFooter
-                                key={entryFooterResetKey}
                                 mode={entryMode}
+                                firstValue={firstInputValue}
+                                secondValue={secondInputValue}
+                                onFirstValueChange={handleFirstValueChange}
+                                onSecondValueChange={setSecondInputValue}
                                 onSubmit={handleEntrySubmit}
-                                initialValues={computedInitialValues}
                                 firstPlaceholder={
                                     lift.title === '' || editingTarget === 'title'
                                         ? 'Enter lift title...'
@@ -1557,16 +1139,8 @@ const LiftEditorScreen: React.FC = () => {
                                 onKeyboardDismiss={handleKeyboardDismiss}
                                 suggestions={suggestionsForInput}
                                 lastTimeNote={lastTimeNote}
-                                onFirstValueChange={handleFirstValueChange}
                                 onFirstFieldFocus={handleEntryFooterFocus}
-                                forceFocus={
-                                    (isAddingNewMovement && editingTarget === 'movementName' && !shouldAutoFocusOnLoad) ||
-                                    shouldFocusSetAfterMovementSubmit ||
-                                    shouldFocusSetOnEmptyLineClick ||
-                                    shouldFocusOnEdit
-                                }
-                                focusTrigger={focusNextSetCounter}
-                                shouldAutoFocusOnLoad={shouldAutoFocusOnLoad}
+                                focusRequest={focusRequest}
                             />
                         </View>
                     )}

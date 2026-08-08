@@ -16,19 +16,19 @@ export type EntryMode = 'single' | 'double';
 
 interface EntryFooterProps {
     mode: EntryMode;
+    firstValue: string;
+    secondValue: string;
+    onFirstValueChange: (value: string) => void;
+    onSecondValueChange: (value: string) => void;
     onSubmit: (values: { first: string; second?: string }) => void;
-    initialValues?: { first: string; second?: string };
     firstPlaceholder?: string;
     secondPlaceholder?: string;
     onKeyboardDismiss?: () => void;
     suggestions?: string[];
     lastTimeNote?: string | null;
-    onSuggestionSelect?: (suggestion: string) => void;
-    onFirstValueChange?: (value: string) => void;
     onFirstFieldFocus?: () => void;
-    forceFocus?: boolean;
-    shouldAutoFocusOnLoad?: boolean;
-    focusTrigger?: number;
+    /** Increment to focus the first input (0 = no request yet) */
+    focusRequest?: number;
 }
 
 const isValidNumber = (value: string): boolean => {
@@ -38,38 +38,29 @@ const isValidNumber = (value: string): boolean => {
 
 const EntryFooter: React.FC<EntryFooterProps> = ({
     mode,
+    firstValue,
+    secondValue,
+    onFirstValueChange,
+    onSecondValueChange,
     onSubmit,
-    initialValues,
     firstPlaceholder = 'Enter movement name...',
     secondPlaceholder = 'Enter reps...',
     onKeyboardDismiss,
     suggestions = [],
     lastTimeNote,
-    onSuggestionSelect,
-    onFirstValueChange,
     onFirstFieldFocus,
-    forceFocus = false,
-    shouldAutoFocusOnLoad = false,
-    focusTrigger = 0,
+    focusRequest = 0,
 }) => {
     const insets = useSafeAreaInsets();
-    const [firstValue, setFirstValue] = useState(initialValues?.first || '');
-    const [secondValue, setSecondValue] = useState(initialValues?.second || '');
     const [showWarning, setShowWarning] = useState(false);
     const [warningMessage, setWarningMessage] = useState('');
+    const [activeField, setActiveField] = useState<'first' | 'second'>('first');
     const firstInputRef = useRef<TextInput>(null);
     const secondInputRef = useRef<TextInput>(null);
     const isSubmitting = useRef(false);
     const warningTimeout = useRef<NodeJS.Timeout | null>(null);
     const keyboardHeight = useRef(new Animated.Value(0));
-    const previousInitialValuesRef = useRef<{ first?: string; second?: string }>({
-        first: initialValues?.first,
-        second: initialValues?.second,
-    });
-    const isProgrammaticUpdateRef = useRef(false);
-    const userDismissedKeyboardRef = useRef(false);
     const hasTriggeredDismissRef = useRef(false);
-    const [activeField, setActiveField] = useState<'first' | 'second'>('first');
 
     const showWarningMessage = (message: string) => {
         setWarningMessage(message);
@@ -83,84 +74,28 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         }, 2500);
     };
 
-    // Clear warnings when mode, initialValues, or focusTrigger change (user switched to different item)
-    useEffect(() => {
-        setShowWarning(false);
+    const clearWarning = () => {
         if (warningTimeout.current) {
             clearTimeout(warningTimeout.current);
             warningTimeout.current = null;
         }
-    }, [mode, initialValues?.first, initialValues?.second, focusTrigger]);
+        setShowWarning(false);
+    };
 
-    // Only focus when explicitly requested via forceFocus or shouldAutoFocusOnLoad
+    // Clear warnings when the editing context changes
     useEffect(() => {
-        if (forceFocus) {
-            setTimeout(() => {
+        clearWarning();
+    }, [mode, focusRequest]);
+
+    // Focus the first input whenever the parent requests it
+    useEffect(() => {
+        if (focusRequest > 0) {
+            const timeout = setTimeout(() => {
                 firstInputRef.current?.focus();
             }, 100);
+            return () => clearTimeout(timeout);
         }
-    }, [forceFocus]);
-
-    // Auto-focus on initial load when shouldAutoFocusOnLoad is true
-    useEffect(() => {
-        if (shouldAutoFocusOnLoad) {
-            setTimeout(() => {
-                firstInputRef.current?.focus();
-            }, 100);
-        }
-    }, [shouldAutoFocusOnLoad]);
-
-    // Focus first input when focusTrigger changes (for adding multiple sets)
-    useEffect(() => {
-        if (focusTrigger > 0) {
-            setTimeout(() => {
-                firstInputRef.current?.focus();
-            }, 100);
-        }
-    }, [focusTrigger]);
-
-    useEffect(() => {
-        const previousInitial = previousInitialValuesRef.current;
-        const incomingFirst = initialValues?.first ?? undefined;
-        const incomingSecond = initialValues?.second ?? undefined;
-        const initialProvided = initialValues !== undefined;
-
-        const hasFirstChanged = previousInitial?.first !== incomingFirst;
-        const hasSecondChanged = previousInitial?.second !== incomingSecond;
-
-        previousInitialValuesRef.current = {
-            first: incomingFirst,
-            second: incomingSecond,
-        };
-
-        if (!initialProvided) {
-            if (previousInitial?.first !== undefined || previousInitial?.second !== undefined) {
-                isProgrammaticUpdateRef.current = true;
-                setFirstValue('');
-                setSecondValue('');
-                onFirstValueChange?.('');
-            }
-            return;
-        }
-
-        // Set the value if it has changed from previous initial OR if current value doesn't match incoming
-        // This ensures the value is set correctly even on remount
-        if (hasFirstChanged && incomingFirst !== undefined) {
-            isProgrammaticUpdateRef.current = true;
-            setFirstValue(incomingFirst);
-            onFirstValueChange?.(incomingFirst);
-        } else if (incomingFirst !== undefined && firstValue !== incomingFirst && previousInitial?.first === undefined) {
-            // Special case: if previousInitial was undefined (component just mounted/remounted)
-            // and the current value doesn't match incoming, set it
-            isProgrammaticUpdateRef.current = true;
-            setFirstValue(incomingFirst);
-            onFirstValueChange?.(incomingFirst);
-        }
-
-        if (hasSecondChanged && incomingSecond !== undefined) {
-            setSecondValue(incomingSecond);
-        }
-    }, [initialValues, onFirstValueChange, firstValue]);
+    }, [focusRequest]);
 
     useEffect(() => {
         const keyboardEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -169,7 +104,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         const keyboardWillShow = Keyboard.addListener(keyboardEventName, (e) => {
             const target = Math.max(0, e.endCoordinates.height - (insets.bottom || 0) - 8);
             if (Platform.OS === 'ios') {
-                // Use spring animation to match iOS keyboard behavior more closely
                 Animated.spring(keyboardHeight.current, {
                     toValue: target,
                     useNativeDriver: true,
@@ -185,9 +119,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             }
         });
 
-        const keyboardWillHide = Keyboard.addListener(keyboardHideEventName, (e) => {
+        const keyboardWillHide = Keyboard.addListener(keyboardHideEventName, () => {
             if (Platform.OS === 'ios') {
-                // Use spring animation to match iOS keyboard behavior more closely
                 Animated.spring(keyboardHeight.current, {
                     toValue: 0,
                     useNativeDriver: true,
@@ -205,16 +138,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             if (!isSubmitting.current && onKeyboardDismiss) {
                 onKeyboardDismiss();
             }
-
-            // Don't clear values if we have initialValues (editing existing item)
-            // or if user explicitly dismissed keyboard
-            if (!userDismissedKeyboardRef.current && !initialValues) {
-                setFirstValue('');
-                setSecondValue('');
-                onFirstValueChange?.('');
-            }
-
-            userDismissedKeyboardRef.current = false;
         });
 
         return () => {
@@ -242,8 +165,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 return;
             }
             onSubmit({ first: firstToUse });
-            setFirstValue('');
-            onFirstValueChange?.('');
         } else if (mode === 'double') {
             if (!firstToUse) {
                 showWarningMessage('Please enter a weight');
@@ -262,10 +183,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 return;
             }
             onSubmit({ first: firstToUse, second: secondToUse });
-            setFirstValue('');
-            setSecondValue('');
-            onFirstValueChange?.('');
-            // Don't auto-focus here - let the parent control focus via forceFocus prop
         }
     };
 
@@ -274,23 +191,15 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
             if (nativeEvent.translationY > 18 && !hasTriggeredDismissRef.current) {
                 hasTriggeredDismissRef.current = true;
                 // Treat this as an explicit "close and clear" gesture.
-                userDismissedKeyboardRef.current = false;
-                isProgrammaticUpdateRef.current = true;
-                setFirstValue('');
-                setSecondValue('');
-                onFirstValueChange?.('');
-                // Clear warning when swiping away
-                if (warningTimeout.current) {
-                    clearTimeout(warningTimeout.current);
-                    warningTimeout.current = null;
-                }
-                setShowWarning(false);
+                onFirstValueChange('');
+                onSecondValueChange('');
+                clearWarning();
                 firstInputRef.current?.blur();
                 secondInputRef.current?.blur();
                 Keyboard.dismiss();
             }
         },
-        []
+        [onFirstValueChange, onSecondValueChange]
     );
 
     const handleGestureStateChange = React.useCallback(
@@ -347,46 +256,25 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         ]}
                         value={firstValue}
                         onChangeText={(text) => {
-                            const isProgrammatic = isProgrammaticUpdateRef.current;
-                            isProgrammaticUpdateRef.current = false;
-                            setFirstValue(text);
-                            // Always call onFirstValueChange for user input, even if there was a recent programmatic update
-                            // This ensures suggestions update on the first keystroke
-                            // Only skip if this onChangeText was triggered by the programmatic update itself
-                            if (!isProgrammatic) {
-                                userDismissedKeyboardRef.current = false;
-                                onFirstValueChange?.(text);
-                                // Clear warning when user starts typing
-                                if (showWarning) {
-                                    if (warningTimeout.current) {
-                                        clearTimeout(warningTimeout.current);
-                                    }
-                                    setShowWarning(false);
-                                }
-                            } else {
-                                // Even if this was triggered by a programmatic update, if the text is different
-                                // from what we set, it means the user has typed, so we should notify
-                                // Check if text differs from the expected initial value
-                                const expectedValue = initialValues?.first ?? '';
-                                if (text !== expectedValue) {
-                                    // User has modified the value, notify parent
-                                    onFirstValueChange?.(text);
-                                }
+                            onFirstValueChange(text);
+                            if (showWarning) {
+                                clearWarning();
                             }
                         }}
                         onFocus={() => {
                             setActiveField('first');
-                            userDismissedKeyboardRef.current = false;
                             onFirstFieldFocus?.();
                         }}
                         placeholder={firstPlaceholder}
                         placeholderTextColor={'#999'}
                         returnKeyType={mode === 'single' ? 'done' : 'next'}
                         keyboardType={firstPlaceholder === 'Enter weight...' ? 'numbers-and-punctuation' : 'default'}
-                        onSubmitEditing={() => {
+                        onSubmitEditing={(e) => {
                             isSubmitting.current = true;
                             if (mode === 'single') {
-                                handleSubmit();
+                                // Use the event's text: the controlled prop can lag
+                                // the native field by a keystroke on fast input
+                                handleSubmit({ first: e.nativeEvent.text });
                             } else if (secondInputRef.current) {
                                 secondInputRef.current.focus();
                             }
@@ -404,29 +292,21 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             ]}
                             value={secondValue}
                             onChangeText={(text) => {
-                                const isProgrammatic = isProgrammaticUpdateRef.current;
-                                isProgrammaticUpdateRef.current = false;
-                                setSecondValue(text);
-                                userDismissedKeyboardRef.current = false;
-                                // Clear warning when user starts typing
+                                onSecondValueChange(text);
                                 if (showWarning) {
-                                    if (warningTimeout.current) {
-                                        clearTimeout(warningTimeout.current);
-                                    }
-                                    setShowWarning(false);
+                                    clearWarning();
                                 }
                             }}
                             onFocus={() => {
                                 setActiveField('second');
-                                userDismissedKeyboardRef.current = false;
                             }}
                             placeholder={secondPlaceholder}
                             placeholderTextColor={'#999'}
                             keyboardType="numbers-and-punctuation"
                             returnKeyType="done"
-                            onSubmitEditing={() => {
+                            onSubmitEditing={(e) => {
                                 isSubmitting.current = true;
-                                handleSubmit();
+                                handleSubmit({ second: e.nativeEvent.text });
                                 isSubmitting.current = false;
                             }}
                             blurOnSubmit={false}
@@ -446,25 +326,18 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                     <TouchableOpacity
                                         style={styles.suggestionTouchable}
                                         onPress={() => {
-                                            onSuggestionSelect?.(suggestion);
-
-                                            // In single mode (titles/movements), selecting a suggestion should submit immediately.
+                                            // In single mode (titles/movements), selecting a suggestion submits immediately.
                                             if (mode === 'single') {
                                                 handleSubmit({ first: suggestion });
                                                 return;
                                             }
 
                                             // In double mode, suggestions are only shown for the weight field.
-                                            // Selecting a suggestion should fill the weight and move focus to reps,
-                                            // not submit the whole set.
-                                            if (mode === 'double') {
-                                                isProgrammaticUpdateRef.current = true;
-                                                setFirstValue(suggestion);
-                                                onFirstValueChange?.(suggestion);
-                                                setTimeout(() => {
-                                                    secondInputRef.current?.focus();
-                                                }, 0);
-                                            }
+                                            // Selecting one fills the weight and moves focus to reps.
+                                            onFirstValueChange(suggestion);
+                                            setTimeout(() => {
+                                                secondInputRef.current?.focus();
+                                            }, 0);
                                         }}
                                     >
                                         <Text style={styles.suggestionText}>{suggestion}</Text>
@@ -553,4 +426,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default EntryFooter; 
+export default EntryFooter;
