@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PanGestureHandler, State as GestureState } from 'react-native-gesture-handler';
+import { useKeyboardEvents } from './useKeyboardEvents';
 
 export type EntryMode = 'single' | 'double';
 
@@ -96,57 +97,43 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         }
     }, [focusRequest]);
 
-    useEffect(() => {
-        const keyboardEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-        const keyboardHideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const animateToKeyboard = (target: number) => {
+        if (Platform.OS === 'ios') {
+            Animated.spring(keyboardHeight.current, {
+                toValue: target,
+                useNativeDriver: true,
+                tension: 65,
+                friction: 11,
+            }).start();
+        } else {
+            Animated.timing(keyboardHeight.current, {
+                toValue: target,
+                duration: 100,
+                useNativeDriver: true,
+            }).start();
+        }
+    };
 
-        const keyboardWillShow = Keyboard.addListener(keyboardEventName, (e) => {
-            const target = Math.max(0, e.endCoordinates.height - (insets.bottom || 0) - 8);
-            if (Platform.OS === 'ios') {
-                Animated.spring(keyboardHeight.current, {
-                    toValue: target,
-                    useNativeDriver: true,
-                    tension: 65,
-                    friction: 11,
-                }).start();
-            } else {
-                Animated.timing(keyboardHeight.current, {
-                    toValue: target,
-                    duration: 100,
-                    useNativeDriver: true,
-                }).start();
-            }
-        });
-
-        const keyboardWillHide = Keyboard.addListener(keyboardHideEventName, () => {
-            if (Platform.OS === 'ios') {
-                Animated.spring(keyboardHeight.current, {
-                    toValue: 0,
-                    useNativeDriver: true,
-                    tension: 65,
-                    friction: 11,
-                }).start();
-            } else {
-                Animated.timing(keyboardHeight.current, {
-                    toValue: 0,
-                    duration: 100,
-                    useNativeDriver: true,
-                }).start();
-            }
-
+    useKeyboardEvents(
+        (e) => {
+            animateToKeyboard(Math.max(0, e.endCoordinates.height - (insets.bottom || 0) - 8));
+        },
+        () => {
+            animateToKeyboard(0);
             if (!isSubmitting.current && onKeyboardDismiss) {
                 onKeyboardDismiss();
             }
-        });
+        }
+    );
 
+    // Clear any pending warning timer on unmount
+    useEffect(() => {
         return () => {
-            keyboardWillShow.remove();
-            keyboardWillHide.remove();
             if (warningTimeout.current) {
                 clearTimeout(warningTimeout.current);
             }
         };
-    }, [onKeyboardDismiss, insets.bottom]);
+    }, []);
 
     const handleSubmit = (override?: { first?: string; second?: string }) => {
         const firstToUse = (override?.first ?? firstValue).trim();

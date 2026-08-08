@@ -22,6 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import EntryFooter, { EntryMode } from './EntryFooter';
 import MessageBubble from './MessageBubble';
+import { useKeyboardEvents } from './useKeyboardEvents';
 import { RootStackParamList, Lift, Movement } from './types';
 import {
     retrieveLift,
@@ -271,28 +272,16 @@ const LiftEditorScreen: React.FC = () => {
         }
     }, [route.params?.liftId]);
 
-    useEffect(() => {
-        const keyboardWillShow = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-            (e) => {
-                keyboardHeightRef.current = e.endCoordinates.height;
-                setKeyboardHeight(e.endCoordinates.height);
-            }
-        );
-
-        const keyboardWillHide = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-            () => {
-                keyboardHeightRef.current = 0;
-                setKeyboardHeight(0);
-            }
-        );
-
-        return () => {
-            keyboardWillShow.remove();
-            keyboardWillHide.remove();
-        };
-    }, []);
+    useKeyboardEvents(
+        (e) => {
+            keyboardHeightRef.current = e.endCoordinates.height;
+            setKeyboardHeight(e.endCoordinates.height);
+        },
+        () => {
+            keyboardHeightRef.current = 0;
+            setKeyboardHeight(0);
+        }
+    );
 
     useEffect(() => {
         if (!lift.title) {
