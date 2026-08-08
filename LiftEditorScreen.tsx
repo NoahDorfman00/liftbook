@@ -245,7 +245,6 @@ const LiftEditorScreen: React.FC = () => {
     const movementLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
     const setLayoutsRef = useRef<Record<string, LayoutRectangle>>({});
     const addSetLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
-    const scrollRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
     const [selectedDate, setSelectedDate] = useState(() => {
@@ -353,27 +352,9 @@ const LiftEditorScreen: React.FC = () => {
         return true;
     }, []);
 
-    const attemptScrollToActiveTarget = React.useCallback(() => {
-        if (scrollRetryTimeoutRef.current) {
-            clearTimeout(scrollRetryTimeoutRef.current);
-            scrollRetryTimeoutRef.current = null;
-        }
-
-        const success = scrollToActiveEditingTarget();
-
-        if (!success) {
-            const retryScroll = () => {
-                const retrySuccess = scrollToActiveEditingTarget();
-                if (!retrySuccess) {
-                    scrollRetryTimeoutRef.current = setTimeout(retryScroll, 200);
-                } else {
-                    scrollRetryTimeoutRef.current = null;
-                }
-            };
-
-            scrollRetryTimeoutRef.current = setTimeout(retryScroll, 200);
-        }
-    }, [scrollToActiveEditingTarget]);
+    // No retry loop: if the target's layout isn't measured yet, the row's
+    // onLayout callback below triggers the scroll as soon as it lands.
+    const attemptScrollToActiveTarget = scrollToActiveEditingTarget;
 
     const scheduleScrollToActiveTarget = React.useCallback(() => {
         if (typeof requestAnimationFrame === 'function') {
@@ -421,23 +402,11 @@ const LiftEditorScreen: React.FC = () => {
         }
     }, [scheduleScrollToActiveTarget]);
 
+    // Scroll whenever the editing target or the visible area changes
     useEffect(() => {
-        if (editingTarget === 'none') {
-            if (scrollRetryTimeoutRef.current) {
-                clearTimeout(scrollRetryTimeoutRef.current);
-                scrollRetryTimeoutRef.current = null;
-            }
-            return;
+        if (editingTarget !== 'none') {
+            attemptScrollToActiveTarget();
         }
-
-        attemptScrollToActiveTarget();
-
-        return () => {
-            if (scrollRetryTimeoutRef.current) {
-                clearTimeout(scrollRetryTimeoutRef.current);
-                scrollRetryTimeoutRef.current = null;
-            }
-        };
     }, [
         attemptScrollToActiveTarget,
         editingMovementIndex,
