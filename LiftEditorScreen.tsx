@@ -931,93 +931,46 @@ const LiftEditorScreen: React.FC = () => {
         return 'movement';
     }, [entryMode, editingTarget, lift.title]);
 
-    const titleSuggestions = React.useMemo(() => {
-        if (suggestionContext !== 'title') {
-            return [];
-        }
-
-        const query = firstInputValue.trim().toLowerCase();
+    // Ordered, deduped title candidates. Rebuilt only when the underlying data
+    // changes; the per-keystroke query filter below works on this small list.
+    const titleCandidates = React.useMemo(() => {
         const seen = new Set<string>();
-
-        // Priority 0: Cycle-predicted next titles (based on what historically follows the most recent lift)
-        const priority0: string[] = [];
-        cycleSuggestions.forEach((title) => {
+        const candidates: string[] = [];
+        const push = (title: string) => {
             const trimmed = title.trim();
             if (!trimmed) return;
             const key = trimmed.toLowerCase();
             if (seen.has(key)) return;
-            if (!matchesQuery(trimmed, query)) return;
             seen.add(key);
-            priority0.push(trimmed);
-        });
+            candidates.push(trimmed);
+        };
 
-        // Priority 1: User saved lift titles (already sorted by most recent to least recent)
-        const priority1: string[] = [];
-        orderedLiftTitles.forEach((title) => {
-            const trimmed = title.trim();
-            if (!trimmed) {
-                return;
-            }
+        // Priority 0: cycle-predicted next titles (what historically follows the most recent lift)
+        cycleSuggestions.forEach(push);
+        // Priority 1: user saved lift titles (most recent first)
+        orderedLiftTitles.forEach(push);
+        // Priority 2: default lift titles (alphabetical)
+        [...DEFAULT_LIFT_TITLES].sort((a, b) => a.localeCompare(b)).forEach(push);
 
-            const key = trimmed.toLowerCase();
-            if (seen.has(key)) {
-                return; // Already processed
-            }
+        return candidates;
+    }, [cycleSuggestions, orderedLiftTitles]);
 
-            const matches = matchesQuery(trimmed, query);
-            if (!matches) {
-                return; // Doesn't match query
-            }
-
-            seen.add(key);
-            priority1.push(trimmed);
-        });
-
-        // Priority 2: Default lift titles (alphabetically sorted)
-        const priority2: string[] = [];
-        // Sort defaults alphabetically
-        const sortedDefaults = [...DEFAULT_LIFT_TITLES].sort((a, b) => a.localeCompare(b));
-
-        sortedDefaults.forEach((title) => {
-            const trimmed = title.trim();
-            if (!trimmed) {
-                return;
-            }
-
-            const key = trimmed.toLowerCase();
-            if (seen.has(key)) {
-                return; // Already in a higher priority
-            }
-
-            const matches = matchesQuery(trimmed, query);
-            if (!matches) {
-                return; // Doesn't match query
-            }
-
-            seen.add(key);
-            priority2.push(trimmed);
-        });
-
-        // Combine priorities in order
-        const allSuggestions = [
-            ...priority0,
-            ...priority1,
-            ...priority2,
-        ];
-
-        // Take top 3, displayed left to right in priority order
-        return allSuggestions.slice(0, 3);
-    }, [suggestionContext, firstInputValue, orderedLiftTitles, cycleSuggestions]);
-
-    const movementSuggestions = React.useMemo(() => {
-        if (suggestionContext !== 'movement') {
+    const titleSuggestions = React.useMemo(() => {
+        if (suggestionContext !== 'title') {
             return [];
         }
-
         const query = firstInputValue.trim().toLowerCase();
+        return titleCandidates
+            .filter(title => matchesQuery(title, query))
+            .slice(0, 3);
+    }, [suggestionContext, firstInputValue, titleCandidates]);
+
+    // Ordered, deduped movement candidates. Rebuilt only when the underlying
+    // data changes; the per-keystroke query filter below works on this list.
+    const movementCandidates = React.useMemo(() => {
         const normalizedCurrentTitle = lift.title.trim().toLowerCase();
 
-        // Get all movements already in the current lift
+        // Movements already in the current lift sort to the back (priority 4)
         const existingNames = new Set<string>();
         lift.movements.forEach((movement) => {
             if (movement.name.trim()) {
@@ -1025,146 +978,59 @@ const LiftEditorScreen: React.FC = () => {
             }
         });
 
-        // Collect all movements from all lifts, categorized by priority
-        const priority1: string[] = []; // Movements from name-matched lifts that haven't been used
-        const priority2: string[] = []; // Movements from other-named lifts that haven't been used
-        const priority3: string[] = []; // Defaults that haven't been used
-        const priority4: string[] = []; // Movements already in current lift
+        const priority1: string[] = []; // From same-titled lifts, recency + position order
+        const priority2: string[] = []; // From other lifts
+        const priority3: string[] = []; // Defaults
+        const priority4: string[] = []; // Already in current lift
 
         const seen = new Set<string>();
+        const push = (name: string, bucket: string[]) => {
+            const trimmed = name.trim();
+            if (!trimmed) return;
+            const key = trimmed.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            (existingNames.has(key) ? priority4 : bucket).push(trimmed);
+        };
 
-        // Partition lifts into name-matched and others
         const nameMatchedLifts: Lift[] = [];
         const otherLifts: Lift[] = [];
-
         Object.values(allLifts).forEach((liftItem) => {
             if (liftItem.id === lift.id) {
                 return; // Skip current lift
             }
             const isNameMatched = liftItem.title &&
                 liftItem.title.trim().toLowerCase() === normalizedCurrentTitle;
-            if (isNameMatched) {
-                nameMatchedLifts.push(liftItem);
-            } else {
-                otherLifts.push(liftItem);
-            }
+            (isNameMatched ? nameMatchedLifts : otherLifts).push(liftItem);
         });
 
-        // Sort name-matched lifts by date descending (most recent first)
+        // Walk same-titled lifts most-recent-first, movements top-to-bottom
         nameMatchedLifts.sort((a, b) => b.date.localeCompare(a.date));
-
-        // Build priority 1: walk most-recent-first, movements top-to-bottom
         nameMatchedLifts.forEach((liftItem) => {
-            liftItem.movements.forEach((movement) => {
-                const trimmed = movement.name.trim();
-                if (!trimmed) {
-                    return;
-                }
-
-                const key = trimmed.toLowerCase();
-                if (seen.has(key)) {
-                    return; // Already processed this movement
-                }
-
-                const isExisting = existingNames.has(key);
-                const matches = matchesQuery(trimmed, query);
-
-                if (!matches) {
-                    return; // Doesn't match query
-                }
-
-                seen.add(key);
-
-                if (isExisting) {
-                    priority4.push(trimmed);
-                } else {
-                    priority1.push(trimmed);
-                }
-            });
+            liftItem.movements.forEach((movement) => push(movement.name, priority1));
         });
-
-        // Build priority 2 from non-name-matched lifts
         otherLifts.forEach((liftItem) => {
-            liftItem.movements.forEach((movement) => {
-                const trimmed = movement.name.trim();
-                if (!trimmed) {
-                    return;
-                }
-
-                const key = trimmed.toLowerCase();
-                if (seen.has(key)) {
-                    return; // Already processed this movement
-                }
-
-                const isExisting = existingNames.has(key);
-                const matches = matchesQuery(trimmed, query);
-
-                if (!matches) {
-                    return; // Doesn't match query
-                }
-
-                seen.add(key);
-
-                if (isExisting) {
-                    priority4.push(trimmed);
-                } else {
-                    priority2.push(trimmed);
-                }
-            });
+            liftItem.movements.forEach((movement) => push(movement.name, priority2));
         });
+        DEFAULT_MOVEMENTS.forEach((name) => push(name, priority3));
 
-        // Add defaults to priority 3 (if not already in other priorities)
-        DEFAULT_MOVEMENTS.forEach((defaultMovement) => {
-            const trimmed = defaultMovement.trim();
-            if (!trimmed) {
-                return;
-            }
-
-            const key = trimmed.toLowerCase();
-            if (seen.has(key)) {
-                return; // Already in a higher priority
-            }
-
-            const matches = matchesQuery(trimmed, query);
-            if (!matches) {
-                return;
-            }
-
-            const isExisting = existingNames.has(key);
-            seen.add(key);
-
-            if (isExisting) {
-                priority4.push(trimmed);
-            } else {
-                priority3.push(trimmed);
-            }
-        });
-
-        // priority1 is already in recency + position order — do not sort it
+        // priority1 keeps recency + position order — do not sort it
         priority2.sort((a, b) => a.localeCompare(b));
         priority3.sort((a, b) => a.localeCompare(b));
         priority4.sort((a, b) => a.localeCompare(b));
 
-        // Combine priorities in order
-        const allSuggestions = [
-            ...priority1,
-            ...priority2,
-            ...priority3,
-            ...priority4,
-        ];
+        return [...priority1, ...priority2, ...priority3, ...priority4];
+    }, [allLifts, lift.id, lift.movements, lift.title]);
 
-        // Take top 3, displayed left to right in priority order
-        return allSuggestions.slice(0, 3);
-    }, [
-        suggestionContext,
-        firstInputValue,
-        allLifts,
-        lift.id,
-        lift.movements,
-        lift.title,
-        editingTarget,
-        editingMovementIndex,
-    ]);
+    const movementSuggestions = React.useMemo(() => {
+        if (suggestionContext !== 'movement') {
+            return [];
+        }
+        const query = firstInputValue.trim().toLowerCase();
+        return movementCandidates
+            .filter(name => matchesQuery(name, query))
+            .slice(0, 3);
+    }, [suggestionContext, firstInputValue, movementCandidates]);
 
     const lastTimeNote = React.useMemo<string | null>(() => {
         if (
