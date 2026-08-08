@@ -179,7 +179,7 @@ const LiftEditorScreen: React.FC = () => {
     const [pendingDeleteMovementIndex, setPendingDeleteMovementIndex] = useState<number | null>(null);
     const [pendingDeleteSet, setPendingDeleteSet] = useState<{ movementIndex: number; setIndex: number } | null>(null);
 
-    const editingTarget = editing.target === 'movementName' ? 'movementName' : editing.target;
+    const editingTarget = editing.target;
     const editingMovementIndex =
         editing.target === 'movementName' || editing.target === 'set' ? editing.movementIndex : null;
     const editingSetIndex = editing.target === 'set' ? editing.setIndex : null;
@@ -248,10 +248,11 @@ const LiftEditorScreen: React.FC = () => {
     const addSetLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
 
     const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
-    const [selectedDate, setSelectedDate] = useState(() => {
+    // The picker's Date is derived from lift.date — one source of truth
+    const pickerDate = React.useMemo(() => {
         const [year, month, day] = lift.date.split('-').map(Number);
         return new Date(year, month - 1, day);
-    });
+    }, [lift.date]);
 
     useEffect(() => {
         const loadAllLifts = async () => {
@@ -677,16 +678,14 @@ const LiftEditorScreen: React.FC = () => {
             return;
         }
 
-        setSelectedDate(date);
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
-        const dateString = `${year}-${month}-${day}`;
 
-        // Update local state and persist so the list screen sees the new date
+        // Persist so the list screen sees the new date
         const updatedLift: Lift = {
             ...lift,
-            date: dateString,
+            date: `${year}-${month}-${day}`,
         };
 
         updateLift(updatedLift);
@@ -759,9 +758,6 @@ const LiftEditorScreen: React.FC = () => {
         return [];
     }, [movementSuggestions, suggestionContext, titleSuggestions]);
 
-    const handleFirstValueChange = React.useCallback((value: string) => {
-        setFirstInputValue(value);
-    }, []);
 
     const handleFooterLayout = React.useCallback((event: LayoutChangeEvent) => {
         const { height } = event.nativeEvent.layout;
@@ -769,6 +765,13 @@ const LiftEditorScreen: React.FC = () => {
     }, []);
 
     const contentBottomPadding = footerHeight + keyboardHeight + 48;
+
+    const startNewMovement = React.useCallback(() => {
+        setEditing(
+            { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
+            { first: '', focus: true }
+        );
+    }, [setEditing]);
 
     const handleEntryFooterFocus = React.useCallback(() => {
         // If the footer was dismissed and the lift has a title, focusing the
@@ -898,52 +901,30 @@ const LiftEditorScreen: React.FC = () => {
 
                                 {/* Empty line after all movements to tap and add a new movement, OR show the new movement bubble */}
                                 {lift.title.trim().length > 0 && (
-                                    <>
-                                        {!isAddingNewMovement && (
-                                            <Pressable
-                                                onPress={() => {
-                                                    setEditing(
-                                                        { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
-                                                        { first: '', focus: true }
-                                                    );
-                                                }}
-                                                android_ripple={null}
-                                            >
-                                                <View style={styles.emptyLine} />
-                                            </Pressable>
-                                        )}
-
-                                        {isAddingNewMovement && (
-                                            <View
-                                                collapsable={false}
-                                                onLayout={(event) => registerMovementLayout(NEW_MOVEMENT_INDEX, event.nativeEvent.layout)}
-                                                style={{ position: 'relative' }}
-                                            >
-                                                <MessageBubble
-                                                    type="movement"
-                                                    content={{ name: '', sets: [] }}
-                                                    movementPlaceholderText="Movement"
-                                                    showMovementPlaceholder={true}
-                                                    isMovementNameHighlighted={isAddingNewMovement}
-                                                    prependEmptyLine={false}
-                                                    onMovementPress={() => {
-                                                        setEditing(
-                                                            { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
-                                                            { first: '', focus: true }
-                                                        );
-                                                    }}
-                                                    onEmptyLinePress={() => {
-                                                        setEditing(
-                                                            { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
-                                                            { first: '', focus: true }
-                                                        );
-                                                    }}
-                                                    isLast={true}
-                                                    onAddSetLayout={(layout) => registerAddSetLayout(NEW_MOVEMENT_INDEX, layout)}
-                                                />
-                                            </View>
-                                        )}
-                                    </>
+                                    !isAddingNewMovement ? (
+                                        <Pressable onPress={startNewMovement} android_ripple={null}>
+                                            <View style={styles.emptyLine} />
+                                        </Pressable>
+                                    ) : (
+                                        <View
+                                            collapsable={false}
+                                            onLayout={(event) => registerMovementLayout(NEW_MOVEMENT_INDEX, event.nativeEvent.layout)}
+                                            style={{ position: 'relative' }}
+                                        >
+                                            <MessageBubble
+                                                type="movement"
+                                                content={{ name: '', sets: [] }}
+                                                movementPlaceholderText="Movement"
+                                                showMovementPlaceholder={true}
+                                                isMovementNameHighlighted={isAddingNewMovement}
+                                                prependEmptyLine={false}
+                                                onMovementPress={startNewMovement}
+                                                onEmptyLinePress={startNewMovement}
+                                                isLast={true}
+                                                onAddSetLayout={(layout) => registerAddSetLayout(NEW_MOVEMENT_INDEX, layout)}
+                                            />
+                                        </View>
+                                    )
                                 )}
                             </View>
                         </View>
@@ -955,7 +936,7 @@ const LiftEditorScreen: React.FC = () => {
                                 mode={entryMode}
                                 firstValue={firstInputValue}
                                 secondValue={secondInputValue}
-                                onFirstValueChange={handleFirstValueChange}
+                                onFirstValueChange={setFirstInputValue}
                                 onSecondValueChange={setSecondInputValue}
                                 onSubmit={handleEntrySubmit}
                                 firstPlaceholder={
@@ -997,7 +978,7 @@ const LiftEditorScreen: React.FC = () => {
                                 </TouchableOpacity>
                             </View>
                             <DateTimePicker
-                                value={selectedDate}
+                                value={pickerDate}
                                 mode="date"
                                 display="spinner"
                                 onChange={handleDateChange}
