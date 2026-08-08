@@ -172,7 +172,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 // Use spring animation to match iOS keyboard behavior more closely
                 Animated.spring(keyboardHeight.current, {
                     toValue: target,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                     tension: 65,
                     friction: 11,
                 }).start();
@@ -180,7 +180,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 Animated.timing(keyboardHeight.current, {
                     toValue: target,
                     duration: 100,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }).start();
             }
         });
@@ -190,7 +190,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 // Use spring animation to match iOS keyboard behavior more closely
                 Animated.spring(keyboardHeight.current, {
                     toValue: 0,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                     tension: 65,
                     friction: 11,
                 }).start();
@@ -198,7 +198,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 Animated.timing(keyboardHeight.current, {
                     toValue: 0,
                     duration: 100,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }).start();
             }
 

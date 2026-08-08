@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import EntryFooter, { EntryMode } from './EntryFooter';
 import MessageBubble from './MessageBubble';
 import { RootStackParamList, Lift, Movement } from './types';
@@ -36,22 +37,25 @@ import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
 
-const RuledLines = ({ minHeight = 10000 }: { minHeight?: number }) => {
-    // Generate enough lines to cover the minimum height
-    // Each line is 24px apart, so we need (minHeight / 24) lines
-    // Add some buffer to ensure we always have enough
-    const lineCount = Math.ceil(minHeight / 24) + 50;
-    const lines = Array.from({ length: lineCount }, (_, i) => (
-        <View
-            key={i}
-            style={[
-                styles.ruledLine,
-                { top: i * 24 } // Start at 0px from top, every 24px
-            ]}
-        />
-    ));
-    return <>{lines}</>;
-};
+// One SVG with a repeating 24px pattern instead of hundreds of 1px Views
+const RuledLines = React.memo(({ minHeight = 10000 }: { minHeight?: number }) => {
+    const height = Math.ceil(minHeight / 24) * 24 + 1200;
+    return (
+        <Svg
+            height={height}
+            width="100%"
+            style={styles.ruledLinesSvg}
+            pointerEvents="none"
+        >
+            <Defs>
+                <Pattern id="ruled" width={4000} height={24} patternUnits="userSpaceOnUse">
+                    <Rect x={0} y={0} width={4000} height={1} fill="#e0e0e0" />
+                </Pattern>
+            </Defs>
+            <Rect x={0} y={0} width="100%" height="100%" fill="url(#ruled)" />
+        </Svg>
+    );
+});
 
 const LiftEditorScreen: React.FC = () => {
     const navigation = useNavigation<LiftEditorScreenNavigationProp>();
@@ -1798,12 +1802,11 @@ const styles = StyleSheet.create({
         paddingTop: 0, // Remove top padding
         paddingBottom: 16,
     },
-    ruledLine: {
+    ruledLinesSvg: {
         position: 'absolute',
+        top: 0,
         left: 0,
         right: 0,
-        height: 1,
-        backgroundColor: '#e0e0e0',
     },
     modalContainer: {
         flex: 1,
