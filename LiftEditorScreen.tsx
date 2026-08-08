@@ -37,6 +37,102 @@ import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
 
+const NEW_MOVEMENT_INDEX = -1;
+
+// The single source of truth for what is being edited. Everything the old
+// implementation tracked in parallel flags (entryMode, editingTarget,
+// editingMovementIndex, editingSetIndex, isAddingNewMovement) derives
+// from this one value.
+type EditingState =
+    | { target: 'none' }
+    | { target: 'title' }
+    | { target: 'movementName'; movementIndex: number }
+    | { target: 'set'; movementIndex: number; setIndex: number };
+
+type SetEditingFn = (
+    next: EditingState,
+    opts?: { focus?: boolean; first?: string; second?: string; dismissKeyboard?: boolean }
+) => void;
+
+interface MovementRowProps {
+    index: number;
+    movement: Movement;
+    isLast: boolean;
+    isEditing: boolean;
+    isMovementNameHighlighted: boolean;
+    isMovementPendingDelete: boolean;
+    showMovementPlaceholder: boolean;
+    highlightedSetIndex: number | null;
+    pendingDeleteSetIndex: number | null;
+    showSetPlaceholder: boolean;
+    setEditing: SetEditingFn;
+    onMovementLongPress: (index: number) => void;
+    onSetLongPress: (movementIndex: number, setIndex: number) => void;
+    registerMovementLayout: (index: number, layout: LayoutRectangle) => void;
+    registerSetLayout: (movementIndex: number, setIndex: number, layout: LayoutRectangle) => void;
+    registerAddSetLayout: (index: number, layout: LayoutRectangle) => void;
+}
+
+// Memoized so typing in the footer (which re-renders the screen on every
+// keystroke) does not re-render every movement bubble. All function props
+// are referentially stable; the rest are primitives or the movement object,
+// whose identity only changes when that movement's data changes.
+const MovementRow = React.memo<MovementRowProps>(({
+    index,
+    movement,
+    isLast,
+    isEditing,
+    isMovementNameHighlighted,
+    isMovementPendingDelete,
+    showMovementPlaceholder,
+    highlightedSetIndex,
+    pendingDeleteSetIndex,
+    showSetPlaceholder,
+    setEditing,
+    onMovementLongPress,
+    onSetLongPress,
+    registerMovementLayout,
+    registerSetLayout,
+    registerAddSetLayout,
+}) => (
+    <View
+        collapsable={false}
+        onLayout={(event) => registerMovementLayout(index, event.nativeEvent.layout)}
+        style={{ position: 'relative' }}
+    >
+        <MessageBubble
+            type="movement"
+            content={movement}
+            onMovementPress={() => {
+                setEditing({ target: 'movementName', movementIndex: index }, { focus: true });
+            }}
+            onMovementLongPress={() => onMovementLongPress(index)}
+            onSetPress={(setIdx) => {
+                setEditing({ target: 'set', movementIndex: index, setIndex: setIdx }, { focus: true });
+            }}
+            onSetLongPress={(setIdx) => onSetLongPress(index, setIdx)}
+            onEmptyLinePress={() => {
+                setEditing(
+                    { target: 'set', movementIndex: index, setIndex: movement.sets.length },
+                    { focus: true, first: '', second: '' }
+                );
+            }}
+            onSetLayout={(setIdx, layout) => registerSetLayout(index, setIdx, layout)}
+            onAddSetLayout={(layout) => registerAddSetLayout(index, layout)}
+            isEditing={isEditing}
+            isLast={isLast}
+            isMovementNameHighlighted={isMovementNameHighlighted}
+            isMovementPendingDelete={isMovementPendingDelete}
+            showMovementPlaceholder={showMovementPlaceholder}
+            movementPlaceholderText="Movement"
+            highlightedSetIndex={highlightedSetIndex}
+            pendingDeleteSetIndex={pendingDeleteSetIndex}
+            showSetPlaceholder={showSetPlaceholder}
+            setPlaceholderText="weight x reps"
+        />
+    </View>
+));
+
 // One SVG with a repeating 24px pattern instead of hundreds of 1px Views
 const RuledLines = React.memo(({ minHeight = 10000 }: { minHeight?: number }) => {
     const height = Math.ceil(minHeight / 24) * 24 + 1200;
@@ -68,18 +164,6 @@ const LiftEditorScreen: React.FC = () => {
         title: '',
         movements: [],
     });
-
-    const NEW_MOVEMENT_INDEX = -1;
-
-    // The single source of truth for what is being edited. Everything the old
-    // implementation tracked in parallel flags (entryMode, editingTarget,
-    // editingMovementIndex, editingSetIndex, isAddingNewMovement) derives
-    // from this one value.
-    type EditingState =
-        | { target: 'none' }
-        | { target: 'title' }
-        | { target: 'movementName'; movementIndex: number }
-        | { target: 'set'; movementIndex: number; setIndex: number };
 
     const [editing, setEditingState] = useState<EditingState>({ target: 'none' });
     const editingRef = useRef<EditingState>(editing);
@@ -213,31 +297,35 @@ const LiftEditorScreen: React.FC = () => {
         }
     }, [lift.title]);
 
+    // Reads editingRef/liftRef so the callback (and everything derived from
+    // it) stays referentially stable across renders.
     const scrollToActiveEditingTarget = React.useCallback(() => {
         if (!scrollViewRef.current) {
             return false;
         }
 
+        const current = editingRef.current;
         let targetY: number | null = null;
 
-        if (editingTarget === 'title') {
+        if (current.target === 'title') {
             targetY = titleLayoutRef.current?.y ?? 0;
-        } else if (editingTarget === 'movementName' && editingMovementIndex !== null) {
-            const movementLayout = movementLayoutsRef.current[editingMovementIndex];
+        } else if (current.target === 'movementName') {
+            const movementLayout = movementLayoutsRef.current[current.movementIndex];
             if (movementLayout) {
                 targetY = movementLayout.y;
             }
-        } else if (editingTarget === 'set' && editingMovementIndex !== null) {
-            const movementLayout = movementLayoutsRef.current[editingMovementIndex];
-            const movement = editingMovementIndex >= 0 ? lift.movements[editingMovementIndex] : undefined;
+        } else if (current.target === 'set') {
+            const { movementIndex, setIndex } = current;
+            const movementLayout = movementLayoutsRef.current[movementIndex];
+            const movement = movementIndex >= 0 ? liftRef.current.movements[movementIndex] : undefined;
             if (movementLayout) {
-                if (movement && editingSetIndex != null && editingSetIndex < movement.sets.length) {
-                    const setLayout = setLayoutsRef.current[`${editingMovementIndex}-${editingSetIndex}`];
+                if (movement && setIndex < movement.sets.length) {
+                    const setLayout = setLayoutsRef.current[`${movementIndex}-${setIndex}`];
                     if (setLayout) {
                         targetY = movementLayout.y + setLayout.y;
                     }
                 } else {
-                    const addSetLayout = addSetLayoutsRef.current[editingMovementIndex];
+                    const addSetLayout = addSetLayoutsRef.current[movementIndex];
                     if (addSetLayout) {
                         targetY = movementLayout.y + addSetLayout.y;
                     } else {
@@ -255,13 +343,7 @@ const LiftEditorScreen: React.FC = () => {
         const scrollY = Math.max(0, targetY - SCROLL_MARGIN);
         scrollViewRef.current.scrollTo({ y: scrollY, animated: true });
         return true;
-    }, [
-        editingMovementIndex,
-        editingSetIndex,
-        editingTarget,
-        keyboardHeight,
-        lift.movements,
-    ]);
+    }, []);
 
     const attemptScrollToActiveTarget = React.useCallback(() => {
         if (scrollRetryTimeoutRef.current) {
@@ -285,29 +367,31 @@ const LiftEditorScreen: React.FC = () => {
         }
     }, [scrollToActiveEditingTarget]);
 
+    const scheduleScrollToActiveTarget = React.useCallback(() => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => attemptScrollToActiveTarget());
+        } else {
+            attemptScrollToActiveTarget();
+        }
+    }, [attemptScrollToActiveTarget]);
+
     const registerTitleLayout = React.useCallback((layout: LayoutRectangle) => {
         titleLayoutRef.current = layout;
-        if (editingTarget === 'title') {
-            const scroll = () => attemptScrollToActiveTarget();
-            if (typeof requestAnimationFrame === 'function') {
-                requestAnimationFrame(scroll);
-            } else {
-                scroll();
-            }
+        if (editingRef.current.target === 'title') {
+            scheduleScrollToActiveTarget();
         }
-    }, [attemptScrollToActiveTarget, editingTarget]);
+    }, [scheduleScrollToActiveTarget]);
 
     const registerMovementLayout = React.useCallback((movementIndex: number, layout: LayoutRectangle) => {
         movementLayoutsRef.current[movementIndex] = layout;
-        if (editingMovementIndex === movementIndex && editingTarget !== 'none') {
-            const scroll = () => attemptScrollToActiveTarget();
-            if (typeof requestAnimationFrame === 'function') {
-                requestAnimationFrame(scroll);
-            } else {
-                scroll();
-            }
+        const current = editingRef.current;
+        if (
+            (current.target === 'movementName' || current.target === 'set') &&
+            current.movementIndex === movementIndex
+        ) {
+            scheduleScrollToActiveTarget();
         }
-    }, [attemptScrollToActiveTarget, editingMovementIndex, editingTarget]);
+    }, [scheduleScrollToActiveTarget]);
 
     const registerSetLayout = React.useCallback((
         movementIndex: number,
@@ -315,27 +399,19 @@ const LiftEditorScreen: React.FC = () => {
         layout: LayoutRectangle
     ) => {
         setLayoutsRef.current[`${movementIndex}-${setIndex}`] = layout;
-        if (editingTarget === 'set' && editingMovementIndex === movementIndex) {
-            const scroll = () => attemptScrollToActiveTarget();
-            if (typeof requestAnimationFrame === 'function') {
-                requestAnimationFrame(scroll);
-            } else {
-                scroll();
-            }
+        const current = editingRef.current;
+        if (current.target === 'set' && current.movementIndex === movementIndex) {
+            scheduleScrollToActiveTarget();
         }
-    }, [attemptScrollToActiveTarget, editingMovementIndex, editingTarget]);
+    }, [scheduleScrollToActiveTarget]);
 
     const registerAddSetLayout = React.useCallback((movementIndex: number, layout: LayoutRectangle) => {
         addSetLayoutsRef.current[movementIndex] = layout;
-        if (editingTarget === 'set' && editingMovementIndex === movementIndex) {
-            const scroll = () => attemptScrollToActiveTarget();
-            if (typeof requestAnimationFrame === 'function') {
-                requestAnimationFrame(scroll);
-            } else {
-                scroll();
-            }
+        const current = editingRef.current;
+        if (current.target === 'set' && current.movementIndex === movementIndex) {
+            scheduleScrollToActiveTarget();
         }
-    }, [attemptScrollToActiveTarget, editingMovementIndex, editingTarget]);
+    }, [scheduleScrollToActiveTarget]);
 
     useEffect(() => {
         if (editingTarget === 'none') {
@@ -1009,64 +1085,46 @@ const LiftEditorScreen: React.FC = () => {
                                 </View>
 
                                 {lift.movements.map((movement, index) => (
-                                    <View
+                                    <MovementRow
                                         key={index}
-                                        collapsable={false}
-                                        onLayout={(event) => registerMovementLayout(index, event.nativeEvent.layout)}
-                                        style={{ position: 'relative' }}
-                                    >
-                                        <MessageBubble
-                                            type="movement"
-                                            content={movement}
-                                            onMovementPress={() => {
-                                                setEditing({ target: 'movementName', movementIndex: index }, { focus: true });
-                                            }}
-                                            onMovementLongPress={() => handleMovementLongPress(index)}
-                                            onSetPress={(setIdx) => {
-                                                setEditing({ target: 'set', movementIndex: index, setIndex: setIdx }, { focus: true });
-                                            }}
-                                            onSetLongPress={(setIdx) => handleSetLongPress(index, setIdx)}
-                                            onEmptyLinePress={() => {
-                                                setEditing(
-                                                    { target: 'set', movementIndex: index, setIndex: lift.movements[index].sets.length },
-                                                    { focus: true, first: '', second: '' }
-                                                );
-                                            }}
-                                            onSetLayout={(setIdx, layout) => registerSetLayout(index, setIdx, layout)}
-                                            onAddSetLayout={(layout) => registerAddSetLayout(index, layout)}
-                                            isEditing={editingMovementIndex === index}
-                                            isLast={index === lift.movements.length - 1}
-                                            isMovementNameHighlighted={editingTarget === 'movementName' && editingMovementIndex === index}
-                                            isMovementPendingDelete={pendingDeleteMovementIndex === index}
-                                            showMovementPlaceholder={
-                                                editingTarget === 'movementName' &&
+                                        index={index}
+                                        movement={movement}
+                                        isLast={index === lift.movements.length - 1}
+                                        isEditing={editingMovementIndex === index}
+                                        isMovementNameHighlighted={editingTarget === 'movementName' && editingMovementIndex === index}
+                                        isMovementPendingDelete={pendingDeleteMovementIndex === index}
+                                        showMovementPlaceholder={
+                                            editingTarget === 'movementName' &&
+                                            editingMovementIndex === index &&
+                                            movement.name.trim().length === 0 &&
+                                            keyboardHeight > 0
+                                        }
+                                        highlightedSetIndex={
+                                            editingTarget === 'set' &&
                                                 editingMovementIndex === index &&
-                                                movement.name.trim().length === 0 &&
-                                                keyboardHeight > 0
-                                            }
-                                            movementPlaceholderText="Movement"
-                                            highlightedSetIndex={
-                                                editingTarget === 'set' &&
-                                                    editingMovementIndex === index &&
-                                                    editingSetIndex != null &&
-                                                    editingSetIndex < movement.sets.length
-                                                    ? editingSetIndex
-                                                    : null
-                                            }
-                                            pendingDeleteSetIndex={
-                                                pendingDeleteSet &&
-                                                    pendingDeleteSet.movementIndex === index
-                                                    ? pendingDeleteSet.setIndex
-                                                    : null
-                                            }
-                                            showSetPlaceholder={
-                                                editingTarget === 'set' &&
-                                                editingMovementIndex === index &&
-                                                (editingSetIndex == null || editingSetIndex >= movement.sets.length)
-                                            }
-                                            setPlaceholderText="weight x reps"
-                                        />
-                                    </View>
+                                                editingSetIndex != null &&
+                                                editingSetIndex < movement.sets.length
+                                                ? editingSetIndex
+                                                : null
+                                        }
+                                        pendingDeleteSetIndex={
+                                            pendingDeleteSet &&
+                                                pendingDeleteSet.movementIndex === index
+                                                ? pendingDeleteSet.setIndex
+                                                : null
+                                        }
+                                        showSetPlaceholder={
+                                            editingTarget === 'set' &&
+                                            editingMovementIndex === index &&
+                                            (editingSetIndex == null || editingSetIndex >= movement.sets.length)
+                                        }
+                                        setEditing={setEditing}
+                                        onMovementLongPress={handleMovementLongPress}
+                                        onSetLongPress={handleSetLongPress}
+                                        registerMovementLayout={registerMovementLayout}
+                                        registerSetLayout={registerSetLayout}
+                                        registerAddSetLayout={registerAddSetLayout}
+                                    />
                                 ))}
 
                                 {/* Empty line after all movements to tap and add a new movement, OR show the new movement bubble */}
