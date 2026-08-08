@@ -17,6 +17,7 @@ import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
 import { retrieveLifts } from './liftStore';
 import { matchesQuery, compareLiftsByDateDesc } from './utils';
+import { useTheme } from './theme';
 
 type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Charts'>;
 
@@ -180,6 +181,7 @@ function buildLinePath(
 }
 
 const ChartScreen: React.FC = () => {
+    const theme = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<ChartScreenNavigationProp>();
     const [allLifts, setAllLifts] = useState<{ [id: string]: Lift }>({});
@@ -274,16 +276,16 @@ const ChartScreen: React.FC = () => {
         setShowMovementPicker(true);
     }, []);
 
-    if (!isLoaded) return <View style={[styles.safeArea, { paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]} />;
+    if (!isLoaded) return <View style={[styles.safeArea, { backgroundColor: theme.surface, paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]} />;
 
     const hasData = chartData.length > 0;
 
     return (
-        <View style={[styles.safeArea, { paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]}>
-            <View style={styles.container}>
-                <View style={styles.header}>
+        <View style={[styles.safeArea, { backgroundColor: theme.surface, paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]}>
+            <View style={[styles.container, { backgroundColor: theme.paper }]}>
+                <View style={[styles.header, { borderBottomColor: theme.line, backgroundColor: theme.surface }]}>
                     <View style={styles.headerCenter}>
-                        <Text style={styles.headerTitle}>Charts</Text>
+                        <Text style={[styles.headerTitle, { color: theme.textStrong }]}>Charts</Text>
                     </View>
                     <TouchableOpacity
                         style={styles.backButton}
@@ -291,14 +293,14 @@ const ChartScreen: React.FC = () => {
                     >
                         <Image
                             source={require('./assets/back.png')}
-                            style={[styles.backIcon, { transform: [{ scaleX: -1 }] }]}
+                            style={[styles.backIcon, { tintColor: theme.icon, transform: [{ scaleX: -1 }] }]}
                         />
                     </TouchableOpacity>
                 </View>
 
-                <View style={styles.chartContainer}>
+                <View style={[styles.chartContainer, { backgroundColor: theme.paper }]}>
                     <TouchableOpacity onPress={openPicker}>
-                        <Text style={styles.chartTitle} numberOfLines={1}>
+                        <Text style={[styles.chartTitle, { color: theme.textStrong }]} numberOfLines={1}>
                             {selectedMovement || 'Select Movement'}
                         </Text>
                     </TouchableOpacity>
@@ -314,7 +316,7 @@ const ChartScreen: React.FC = () => {
                                         y1={y}
                                         x2={CHART_PADDING_LEFT + plotWidth}
                                         y2={y}
-                                        stroke="#d4d4d4"
+                                        stroke={theme.chartGrid}
                                         strokeWidth={0.5}
                                     />
                                 );
@@ -326,7 +328,7 @@ const ChartScreen: React.FC = () => {
                                     y1={CHART_PADDING_TOP}
                                     x2={lbl.x}
                                     y2={CHART_PADDING_TOP + plotHeight}
-                                    stroke="#d4d4d4"
+                                    stroke={theme.chartGrid}
                                     strokeWidth={0.5}
                                 />
                             ))}
@@ -342,7 +344,7 @@ const ChartScreen: React.FC = () => {
                                         textAnchor="end"
                                         fontFamily="Schoolbell"
                                         fontSize={13}
-                                        fill="#666"
+                                        fill={theme.textSecondary}
                                     >
                                         {tick}
                                     </SvgText>
@@ -358,7 +360,7 @@ const ChartScreen: React.FC = () => {
                                     textAnchor="middle"
                                     fontFamily="Schoolbell"
                                     fontSize={12}
-                                    fill="#666"
+                                    fill={theme.textSecondary}
                                 >
                                     {lbl.label}
                                 </SvgText>
@@ -370,7 +372,7 @@ const ChartScreen: React.FC = () => {
                                 y1={CHART_PADDING_TOP}
                                 x2={CHART_PADDING_LEFT}
                                 y2={CHART_PADDING_TOP + plotHeight}
-                                stroke="#999"
+                                stroke={theme.chartAxis}
                                 strokeWidth={1}
                             />
                             <Line
@@ -378,49 +380,49 @@ const ChartScreen: React.FC = () => {
                                 y1={CHART_PADDING_TOP + plotHeight}
                                 x2={CHART_PADDING_LEFT + plotWidth}
                                 y2={CHART_PADDING_TOP + plotHeight}
-                                stroke="#999"
+                                stroke={theme.chartAxis}
                                 strokeWidth={1}
                             />
 
                             {/* Min line */}
                             <Path
                                 d={buildLinePath(lines.min)}
-                                stroke="#bbb"
+                                stroke={theme.chartMin}
                                 strokeWidth={2}
                                 fill="none"
                                 strokeLinecap="round"
                             />
                             {lines.min.map((pt, i) => (
-                                <Circle key={`min-${i}`} cx={pt.x} cy={pt.y} r={3} fill="#bbb" />
+                                <Circle key={`min-${i}`} cx={pt.x} cy={pt.y} r={3} fill={theme.chartMin} />
                             ))}
 
                             {/* Avg line */}
                             <Path
                                 d={buildLinePath(lines.avg)}
-                                stroke="#777"
+                                stroke={theme.chartAvg}
                                 strokeWidth={2}
                                 fill="none"
                                 strokeLinecap="round"
                             />
                             {lines.avg.map((pt, i) => (
-                                <Circle key={`avg-${i}`} cx={pt.x} cy={pt.y} r={3} fill="#777" />
+                                <Circle key={`avg-${i}`} cx={pt.x} cy={pt.y} r={3} fill={theme.chartAvg} />
                             ))}
 
                             {/* Max line */}
                             <Path
                                 d={buildLinePath(lines.max)}
-                                stroke="#333"
+                                stroke={theme.chartMax}
                                 strokeWidth={2.5}
                                 fill="none"
                                 strokeLinecap="round"
                             />
                             {lines.max.map((pt, i) => (
-                                <Circle key={`max-${i}`} cx={pt.x} cy={pt.y} r={3.5} fill="#333" />
+                                <Circle key={`max-${i}`} cx={pt.x} cy={pt.y} r={3.5} fill={theme.chartMax} />
                             ))}
                         </Svg>
                     ) : (
                         <View style={styles.noDataContainer}>
-                            <Text style={styles.noDataText}>
+                            <Text style={[styles.noDataText, { color: theme.textTertiary }]}>
                                 {selectedMovement ? 'no data for this range' : 'select a movement'}
                             </Text>
                         </View>
@@ -428,22 +430,22 @@ const ChartScreen: React.FC = () => {
                     {hasData && (
                         <View style={styles.legend}>
                             <View style={styles.legendItem}>
-                                <View style={[styles.legendSwatch, { backgroundColor: '#333' }]} />
-                                <Text style={styles.legendLabel}>max</Text>
+                                <View style={[styles.legendSwatch, { backgroundColor: theme.chartMax }]} />
+                                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>max</Text>
                             </View>
                             <View style={styles.legendItem}>
-                                <View style={[styles.legendSwatch, { backgroundColor: '#777' }]} />
-                                <Text style={styles.legendLabel}>avg</Text>
+                                <View style={[styles.legendSwatch, { backgroundColor: theme.chartAvg }]} />
+                                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>avg</Text>
                             </View>
                             <View style={styles.legendItem}>
-                                <View style={[styles.legendSwatch, { backgroundColor: '#bbb' }]} />
-                                <Text style={styles.legendLabel}>min</Text>
+                                <View style={[styles.legendSwatch, { backgroundColor: theme.chartMin }]} />
+                                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>min</Text>
                             </View>
                         </View>
                     )}
                 </View>
 
-                <View style={styles.rangeBar}>
+                <View style={[styles.rangeBar, { borderTopColor: theme.line, backgroundColor: theme.surface }]}>
                     {TIME_RANGES.map(({ label, value }) => (
                         <TouchableOpacity
                             key={value}
@@ -453,7 +455,8 @@ const ChartScreen: React.FC = () => {
                             <Text
                                 style={[
                                     styles.rangeText,
-                                    selectedRange === value && styles.rangeTextActive,
+                                    { color: theme.textTertiary },
+                                    selectedRange === value && [styles.rangeTextActive, { color: theme.textStrong }],
                                 ]}
                             >
                                 {label}
@@ -468,24 +471,25 @@ const ChartScreen: React.FC = () => {
                     presentationStyle="pageSheet"
                     onRequestClose={() => setShowMovementPicker(false)}
                 >
-                    <SafeAreaView style={styles.modalSafeArea}>
+                    <SafeAreaView style={[styles.modalSafeArea, { backgroundColor: theme.paper }]}>
                         <View style={styles.modalContainer}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Select Movement</Text>
+                            <View style={[styles.modalHeader, { borderBottomColor: theme.line }]}>
+                                <Text style={[styles.modalTitle, { color: theme.textStrong }]}>Select Movement</Text>
                                 <TouchableOpacity
                                     onPress={() => {
                                         setShowMovementPicker(false);
                                         setSearchQuery('');
                                     }}
                                 >
-                                    <Text style={styles.modalClose}>Done</Text>
+                                    <Text style={[styles.modalClose, { color: theme.textSecondary }]}>Done</Text>
                                 </TouchableOpacity>
                             </View>
                             <TextInput
                                 ref={searchInputRef}
-                                style={styles.searchInput}
+                                style={[styles.searchInput, { borderColor: theme.line, color: theme.textStrong }]}
                                 placeholder="Search movements..."
-                                placeholderTextColor="#9e9e9e"
+                                placeholderTextColor={theme.placeholder}
+                                keyboardAppearance={theme.isDark ? 'dark' : 'light'}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
                                 autoFocus
@@ -504,13 +508,17 @@ const ChartScreen: React.FC = () => {
                                     >
                                         <Text style={[
                                             styles.movementItemText,
-                                            item.toLowerCase() === selectedMovement?.toLowerCase() && styles.movementItemActive,
+                                            { color: theme.textStrong },
+                                            item.toLowerCase() === selectedMovement?.toLowerCase() &&
+                                                [styles.movementItemActive, { color: theme.textPrimary }],
                                         ]}>
                                             {item}
                                         </Text>
                                     </TouchableOpacity>
                                 )}
-                                ItemSeparatorComponent={() => <View style={styles.movementSeparator} />}
+                                ItemSeparatorComponent={() => (
+                                    <View style={[styles.movementSeparator, { backgroundColor: theme.line }]} />
+                                )}
                             />
                         </View>
                     </SafeAreaView>
@@ -523,11 +531,9 @@ const ChartScreen: React.FC = () => {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     container: {
         flex: 1,
-        backgroundColor: '#fff',
     },
     header: {
         flexDirection: 'row',
@@ -536,8 +542,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
-        backgroundColor: '#f5f5f5',
     },
     headerCenter: {
         position: 'absolute',
@@ -549,7 +553,6 @@ const styles = StyleSheet.create({
         fontSize: 32,
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
-        color: '#333',
     },
     backButton: {
         paddingHorizontal: 8,
@@ -564,7 +567,6 @@ const styles = StyleSheet.create({
         fontSize: 28,
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
-        color: '#333',
         textAlign: 'center',
         paddingBottom: 8,
     },
@@ -573,7 +575,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 16,
-        backgroundColor: '#fff',
     },
     noDataContainer: {
         alignItems: 'center',
@@ -582,7 +583,6 @@ const styles = StyleSheet.create({
     noDataText: {
         fontSize: 20,
         fontFamily: 'Schoolbell',
-        color: '#999',
     },
     legend: {
         flexDirection: 'row',
@@ -604,7 +604,6 @@ const styles = StyleSheet.create({
     legendLabel: {
         fontSize: 15,
         fontFamily: 'Schoolbell',
-        color: '#666',
     },
     rangeBar: {
         flexDirection: 'row',
@@ -612,8 +611,6 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
         paddingHorizontal: 24,
         borderTopWidth: 1,
-        borderTopColor: '#e0e0e0',
-        backgroundColor: '#f5f5f5',
     },
     rangeButton: {
         paddingHorizontal: 12,
@@ -622,16 +619,13 @@ const styles = StyleSheet.create({
     rangeText: {
         fontSize: 18,
         fontFamily: 'Schoolbell',
-        color: '#999',
     },
     rangeTextActive: {
-        color: '#333',
         fontWeight: 'bold',
         textDecorationLine: 'underline',
     },
     modalSafeArea: {
         flex: 1,
-        backgroundColor: '#fff',
     },
     modalContainer: {
         flex: 1,
@@ -643,18 +637,15 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
     },
     modalTitle: {
         fontSize: 24,
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
-        color: '#333',
     },
     modalClose: {
         fontSize: 18,
         fontFamily: 'Schoolbell',
-        color: '#666',
     },
     searchInput: {
         marginHorizontal: 20,
@@ -662,11 +653,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 10,
         borderWidth: 1,
-        borderColor: '#e0e0e0',
         borderRadius: 8,
         fontSize: 18,
         fontFamily: 'Schoolbell',
-        color: '#333',
     },
     movementItem: {
         paddingHorizontal: 20,
@@ -675,15 +664,12 @@ const styles = StyleSheet.create({
     movementItemText: {
         fontSize: 20,
         fontFamily: 'Schoolbell',
-        color: '#333',
     },
     movementItemActive: {
         fontWeight: 'bold',
-        color: '#000',
     },
     movementSeparator: {
         height: StyleSheet.hairlineWidth,
-        backgroundColor: '#e0e0e0',
         marginHorizontal: 20,
     },
 });

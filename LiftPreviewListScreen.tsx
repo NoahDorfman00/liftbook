@@ -7,10 +7,12 @@ import LiftPreviewList from './LiftPreviewList';
 import { LiftPreview, RootStackParamList } from './types';
 import { retrieveLifts, deleteLiftLocally } from './liftStore';
 import { compareLiftsByDateDesc } from './utils';
+import { useTheme } from './theme';
 
 type LiftPreviewListScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftList'>;
 
 const LiftPreviewListScreen: React.FC = () => {
+    const theme = useTheme();
     const navigation = useNavigation<LiftPreviewListScreenNavigationProp>();
 
     const [lifts, setLifts] = useState<LiftPreview[]>([]);
@@ -72,7 +74,7 @@ const LiftPreviewListScreen: React.FC = () => {
     };
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.surface }]}>
             <LiftPreviewList
                 lifts={lifts}
                 onSelectLift={handleSelectLift}

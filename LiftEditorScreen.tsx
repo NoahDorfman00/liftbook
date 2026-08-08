@@ -31,6 +31,7 @@ import {
     deleteLiftLocally,
 } from './liftStore';
 import { todayISO, formatDisplayDate, matchesQuery } from './utils';
+import { useTheme } from './theme';
 import { buildTitleCandidates, buildMovementCandidates, getLastTimeNote } from './suggestionEngine';
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
@@ -134,6 +135,7 @@ const MovementRow = React.memo<MovementRowProps>(({
 
 // One SVG with a repeating 24px pattern instead of hundreds of 1px Views
 const RuledLines = React.memo(({ minHeight = 10000 }: { minHeight?: number }) => {
+    const theme = useTheme();
     const height = Math.ceil(minHeight / 24) * 24 + 1200;
     return (
         <Svg
@@ -144,7 +146,7 @@ const RuledLines = React.memo(({ minHeight = 10000 }: { minHeight?: number }) =>
         >
             <Defs>
                 <Pattern id="ruled" width={4000} height={24} patternUnits="userSpaceOnUse">
-                    <Rect x={0} y={0} width={4000} height={1} fill="#e0e0e0" />
+                    <Rect x={0} y={0} width={4000} height={1} fill={theme.line} />
                 </Pattern>
             </Defs>
             <Rect x={0} y={0} width="100%" height="100%" fill="url(#ruled)" />
@@ -153,6 +155,7 @@ const RuledLines = React.memo(({ minHeight = 10000 }: { minHeight?: number }) =>
 });
 
 const LiftEditorScreen: React.FC = () => {
+    const theme = useTheme();
     const navigation = useNavigation<LiftEditorScreenNavigationProp>();
     const route = useRoute<LiftEditorScreenRouteProp>();
     const [isLoading, setIsLoading] = useState(!!route.params?.liftId);
@@ -781,22 +784,22 @@ const LiftEditorScreen: React.FC = () => {
     }, [attemptScrollToActiveTarget, setEditing]);
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.surface }]}>
             <KeyboardAvoidingView
                 behavior={undefined}
                 style={styles.keyboardAvoidingView}
             >
-                <View style={styles.header}>
+                <View style={[styles.header, { borderBottomColor: theme.line, backgroundColor: theme.surface }]}>
                     <TouchableOpacity
                         style={styles.iconButton}
                         onPress={() => navigation.goBack()}
                     >
-                        <Image source={require('./assets/back.png')} style={styles.iconImage} />
+                        <Image source={require('./assets/back.png')} style={[styles.iconImage, { tintColor: theme.icon }]} />
                     </TouchableOpacity>
 
                     <View style={styles.headerCenter}>
                         <TouchableOpacity onPress={handleDatePress}>
-                            <Text style={[styles.dateText, { color: '#333' }]}>
+                            <Text style={[styles.dateText, { color: theme.textStrong }]}>
                                 {formatDisplayDate(lift.date)}
                             </Text>
                         </TouchableOpacity>
@@ -806,14 +809,14 @@ const LiftEditorScreen: React.FC = () => {
                         onPress={handleDeleteLift}
                         style={styles.iconButton}
                     >
-                        <Image source={require('./assets/trash.png')} style={styles.iconImage} />
+                        <Image source={require('./assets/trash.png')} style={[styles.iconImage, { tintColor: theme.icon }]} />
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.content}>
                     <ScrollView
                         ref={scrollViewRef}
-                        style={styles.scrollView}
+                        style={[styles.scrollView, { backgroundColor: theme.paper }]}
                         contentContainerStyle={[
                             styles.scrollContent,
                             { paddingBottom: contentBottomPadding }
@@ -825,7 +828,7 @@ const LiftEditorScreen: React.FC = () => {
                         }}
                     >
                         <View
-                            style={styles.notebookBackground}
+                            style={[styles.notebookBackground, { backgroundColor: theme.paper }]}
                             onLayout={(event) => {
                                 const { height } = event.nativeEvent.layout;
                                 // Add buffer to ensure lines extend beyond content
@@ -963,14 +966,14 @@ const LiftEditorScreen: React.FC = () => {
                     transparent={true}
                     onRequestClose={() => setIsDatePickerVisible(false)}
                 >
-                    <View style={[styles.modalContainer]}>
-                        <View style={[styles.modalContent, { backgroundColor: '#fff' }]}>
-                            <View style={[styles.modalHeader]}>
+                    <View style={[styles.modalContainer, { backgroundColor: theme.overlay }]}>
+                        <View style={[styles.modalContent, { backgroundColor: theme.paper }]}>
+                            <View style={[styles.modalHeader, { borderBottomColor: theme.line }]}>
                                 <TouchableOpacity
                                     style={styles.modalButton}
                                     onPress={() => setIsDatePickerVisible(false)}
                                 >
-                                    <Text style={[styles.modalButtonText, { color: '#333' }]}>
+                                    <Text style={[styles.modalButtonText, { color: theme.textStrong }]}>
                                         Done
                                     </Text>
                                 </TouchableOpacity>
@@ -980,7 +983,8 @@ const LiftEditorScreen: React.FC = () => {
                                 mode="date"
                                 display="spinner"
                                 onChange={handleDateChange}
-                                textColor="#333"
+                                textColor={theme.textStrong}
+                                themeVariant={theme.isDark ? 'dark' : 'light'}
                                 style={styles.datePicker}
                             />
                         </View>
@@ -1005,8 +1009,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#e0e0e0',
-        backgroundColor: '#f5f5f5',
     },
     headerCenter: {
         position: 'absolute',
@@ -1035,14 +1037,12 @@ const styles = StyleSheet.create({
     },
     scrollView: {
         flex: 1,
-        backgroundColor: '#fff',
     },
     scrollContent: {
         flexGrow: 1,
     },
     notebookBackground: {
         flex: 1,
-        backgroundColor: '#fff',
         position: 'relative',
         minHeight: '100%',
     },
@@ -1060,7 +1060,6 @@ const styles = StyleSheet.create({
     modalContainer: {
         flex: 1,
         justifyContent: 'flex-end',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
     },
     modalContent: {
         borderTopLeftRadius: 20,
@@ -1072,7 +1071,6 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
         padding: 16,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#e0e0e0',
     },
     modalButton: {
         padding: 8,

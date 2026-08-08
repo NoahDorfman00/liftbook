@@ -9,6 +9,7 @@ import {
     LayoutRectangle,
 } from 'react-native';
 import { Movement } from './types';
+import { useTheme } from './theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -75,7 +76,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     isMovementPendingDelete = false,
     pendingDeleteSetIndex = null,
 }) => {
+    const theme = useTheme();
     const pressableHitSlop = { top: 2, bottom: 2, left: 0, right: 0 }; // 28px container, 24px touch area
+
+    const inkColor = { color: theme.textPrimary };
+    const editingColor = { color: theme.editingText };
+    const placeholderColor = { color: theme.placeholder };
 
     if (type === 'title') {
         const titleContent = (content as string) ?? '';
@@ -98,8 +104,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                             <Text
                                 style={[
                                     styles.titleText,
-                                    (isEditing || isTitleHighlighted || pressed) && styles.editingText,
-                                    isPlaceholderActive && styles.placeholderText,
+                                    inkColor,
+                                    (isEditing || isTitleHighlighted || pressed) && editingColor,
+                                    isPlaceholderActive && placeholderColor,
                                 ]}
                             >
                                 {displayTitle}
@@ -130,8 +137,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                         <Text
                             style={[
                                 styles.movementText,
-                                (isMovementNameHighlighted || isMovementPendingDelete || pressed) && styles.editingText,
-                                isMovementPlaceholderActive && styles.placeholderText,
+                                inkColor,
+                                (isMovementNameHighlighted || isMovementPendingDelete || pressed) && editingColor,
+                                isMovementPlaceholderActive && placeholderColor,
                             ]}
                         >
                             {displayMovementName}
@@ -157,12 +165,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                                 style={[
                                     styles.text,
                                     styles.setText,
+                                    inkColor,
                                     (
                                         highlightedSetIndex === idx ||
                                         pendingDeleteSetIndex === idx ||
                                         isMovementPendingDelete ||
                                         pressed
-                                    ) && styles.editingText,
+                                    ) && editingColor,
                                 ]}
                             >
                                 {set.weight} × {set.reps}
@@ -185,7 +194,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     ]}
                 >
                     {showSetPlaceholder && (
-                        <Text style={[styles.text, styles.setText, styles.placeholderText]}>
+                        <Text style={[styles.text, styles.setText, placeholderColor]}>
                             {setPlaceholderText}
                         </Text>
                     )}
@@ -216,14 +225,12 @@ const styles = StyleSheet.create({
     text: {
         fontSize: 20,
         fontFamily: 'Schoolbell',
-        color: '#000',
         padding: 0,
         margin: 0,
     },
     titleText: {
         fontSize: 32,
         fontFamily: 'Schoolbell',
-        color: '#000',
         fontWeight: 'bold',
         textAlignVertical: 'center',
         textAlign: 'left',
@@ -231,7 +238,6 @@ const styles = StyleSheet.create({
     movementText: {
         fontSize: 20,
         fontFamily: 'Schoolbell',
-        color: '#000',
     },
     setText: {
         fontSize: 20,
@@ -243,12 +249,6 @@ const styles = StyleSheet.create({
     },
     setLineContainer: {
         // no negative margin here
-    },
-    editingText: {
-        color: '#6d6d6d',
-    },
-    placeholderText: {
-        color: '#9e9e9e',
     },
     placeholderLine: {
         justifyContent: 'flex-end',

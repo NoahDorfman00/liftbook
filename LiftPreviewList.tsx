@@ -14,6 +14,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
 import { LiftPreview } from './types';
 import { formatDisplayDate } from './utils';
+import { useTheme } from './theme';
 
 interface LiftPreviewListProps {
     lifts: LiftPreview[];
@@ -30,11 +31,11 @@ const PLUS_BUTTON_HORIZONTAL_PADDING = 8;
 const PLUS_EFFECTIVE_WIDTH = PLUS_ICON_WIDTH + PLUS_BUTTON_HORIZONTAL_PADDING * 2;
 const ARROW_RIGHT_MARGIN = PLUS_EFFECTIVE_WIDTH / 2; // center of the plus button
 
-const ChartIcon = () => (
+const ChartIcon = ({ color }: { color: string }) => (
     <Svg width={26} height={26} viewBox="0 0 26 26" fill="none">
         <Path
             d="M4 20 Q8 18, 10 14 Q12 10, 15 12 Q18 14, 20 6 Q21 4, 22 3"
-            stroke="#333"
+            stroke={color}
             strokeWidth={2.2}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -42,13 +43,13 @@ const ChartIcon = () => (
         />
         <Path
             d="M4 22 L4 4"
-            stroke="#333"
+            stroke={color}
             strokeWidth={1.8}
             strokeLinecap="round"
         />
         <Path
             d="M4 22 L23 22"
-            stroke="#333"
+            stroke={color}
             strokeWidth={1.8}
             strokeLinecap="round"
         />
@@ -62,6 +63,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     onCreateNewLift,
     onOpenCharts,
 }) => {
+    const theme = useTheme();
     const swipeableRefs = React.useRef<Map<string, Swipeable>>(new Map());
 
     const renderRightActions = (
@@ -86,7 +88,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                 ]}
             >
                 <TouchableOpacity
-                    style={[styles.deleteButton]}
+                    style={[styles.deleteButton, { backgroundColor: theme.destructive }]}
                     onPress={() => {
                         Alert.alert(
                             'Delete lift?',
@@ -133,16 +135,17 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     style={[
                         styles.liftPreview,
                         {
-                            backgroundColor: '#fff',
+                            backgroundColor: theme.paper,
+                            borderBottomColor: theme.line,
                         },
                     ]}
                     onPress={() => onSelectLift(item.id)}
                 >
-                    <Text style={[styles.date, { color: '#666' }]}>
+                    <Text style={[styles.date, { color: theme.textSecondary }]}>
                         {formatDisplayDate(item.date)}
                     </Text>
                     <Text
-                        style={[styles.title, { color: '#333' }]}
+                        style={[styles.title, { color: theme.textStrong }]}
                         numberOfLines={1}
                     >
                         {item.title}
@@ -155,16 +158,16 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     const hasLifts = lifts.length > 0;
 
     return (
-        <View style={[styles.container, { backgroundColor: '#f5f5f5' }]}>
-            <View style={styles.header}>
+        <View style={[styles.container, { backgroundColor: theme.surface }]}>
+            <View style={[styles.header, { borderBottomColor: theme.line, backgroundColor: theme.surface }]}>
                 <TouchableOpacity
                     style={styles.chartButton}
                     onPress={onOpenCharts}
                 >
-                    <ChartIcon />
+                    <ChartIcon color={theme.icon} />
                 </TouchableOpacity>
                 <View style={styles.headerCenter}>
-                    <Text style={[styles.headerTitle, { color: '#333' }]}>
+                    <Text style={[styles.headerTitle, { color: theme.textStrong }]}>
                         Lifts
                     </Text>
                 </View>
@@ -174,7 +177,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                 >
                     <Image
                         source={require('./assets/plus.png')}
-                        style={styles.newButtonIcon}
+                        style={[styles.newButtonIcon, { tintColor: theme.icon }]}
                     />
                 </TouchableOpacity>
             </View>
@@ -184,15 +187,15 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     data={lifts}
                     renderItem={renderItem}
                     keyExtractor={(item) => item.id}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={[styles.listContent, { backgroundColor: theme.paper }]}
                 />
             ) : (
-                <View style={styles.emptyStateContainer}>
+                <View style={[styles.emptyStateContainer, { backgroundColor: theme.paper }]}>
                     <Image
                         source={require('./assets/start-here.png')}
-                        style={styles.emptyStateImage}
+                        style={[styles.emptyStateImage, { tintColor: theme.icon }]}
                     />
-                    <Text style={[styles.emptyStateText, { color: '#333' }]}>
+                    <Text style={[styles.emptyStateText, { color: theme.textStrong }]}>
                         log your first lift
                     </Text>
                 </View>
@@ -212,8 +215,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
-        backgroundColor: '#f5f5f5',
     },
     headerCenter: {
         position: 'absolute',
@@ -242,12 +243,10 @@ const styles = StyleSheet.create({
     },
     listContent: {
         paddingVertical: 0,
-        backgroundColor: '#fff',
     },
     liftPreview: {
         padding: 16,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#e0e0e0',
     },
     date: {
         fontSize: 16,
@@ -265,7 +264,6 @@ const styles = StyleSheet.create({
     },
     deleteButton: {
         flex: 1,
-        backgroundColor: '#ff3b30',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -277,7 +275,6 @@ const styles = StyleSheet.create({
     },
     emptyStateContainer: {
         flex: 1,
-        backgroundColor: '#fff',
         paddingHorizontal: 16,
         paddingTop: 8,
         alignItems: 'stretch',

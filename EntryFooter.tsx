@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PanGestureHandler, State as GestureState } from 'react-native-gesture-handler';
 import { useKeyboardEvents } from './useKeyboardEvents';
+import { useTheme } from './theme';
 
 export type EntryMode = 'single' | 'double';
 
@@ -52,6 +53,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     onFirstFieldFocus,
     focusRequest = 0,
 }) => {
+    const theme = useTheme();
     const insets = useSafeAreaInsets();
     const [showWarning, setShowWarning] = useState(false);
     const [warningMessage, setWarningMessage] = useState('');
@@ -205,7 +207,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 style={[
                     styles.container,
                     {
-                        backgroundColor: '#f5f5f5',
+                        backgroundColor: theme.surface,
+                        borderTopColor: theme.line,
                         transform: [
                             {
                                 translateY: Animated.multiply(keyboardHeight.current, -1),
@@ -217,11 +220,11 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 {showWarning && (
                     <View style={[
                         styles.warningContainer,
-                        { backgroundColor: '#ffe5e3' }
+                        { backgroundColor: theme.warningBackground }
                     ]}>
                         <Text style={[
                             styles.warningText,
-                            { color: '#ff3b30', fontFamily: 'Schoolbell-Regular' }
+                            { color: theme.warningText, fontFamily: 'Schoolbell-Regular' }
                         ]}>
                             {warningMessage}
                         </Text>
@@ -236,7 +239,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         ref={firstInputRef}
                         style={[
                             styles.input,
-                            { color: '#333' }
+                            { color: theme.textStrong, borderColor: theme.line }
                         ]}
                         value={firstValue}
                         onChangeText={(text) => {
@@ -249,7 +252,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             onFirstFieldFocus?.();
                         }}
                         placeholder={firstPlaceholder}
-                        placeholderTextColor={'#999'}
+                        placeholderTextColor={theme.textTertiary}
+                        keyboardAppearance={theme.isDark ? 'dark' : 'light'}
                         returnKeyType={mode === 'single' ? 'done' : 'next'}
                         keyboardType={mode === 'double' ? 'numbers-and-punctuation' : 'default'}
                         onSubmitEditing={(e) => {
@@ -271,7 +275,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                             style={[
                                 styles.input,
                                 styles.secondInput,
-                                { color: '#333' }
+                                { color: theme.textStrong, borderColor: theme.line }
                             ]}
                             value={secondValue}
                             onChangeText={(text) => {
@@ -281,7 +285,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                 }
                             }}
                             placeholder={secondPlaceholder}
-                            placeholderTextColor={'#999'}
+                            placeholderTextColor={theme.textTertiary}
+                            keyboardAppearance={theme.isDark ? 'dark' : 'light'}
                             keyboardType="numbers-and-punctuation"
                             returnKeyType="done"
                             onSubmitEditing={(e) => {
@@ -302,7 +307,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                     // Selecting a suggestion submits it immediately
                                     onPress={() => handleSubmit({ first: suggestion })}
                                 >
-                                    <Text style={styles.suggestionText}>{suggestion}</Text>
+                                    <Text style={[styles.suggestionText, { color: theme.textStrong }]}>{suggestion}</Text>
                                 </TouchableOpacity>
                             </View>
                         ))}
@@ -310,7 +315,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 )}
                 {mode === 'double' && !!lastTimeNote && (
                     <View style={styles.lastTimeContainer}>
-                        <Text style={styles.lastTimeText}>{lastTimeNote}</Text>
+                        <Text style={[styles.lastTimeText, { color: theme.textMuted }]}>{lastTimeNote}</Text>
                     </View>
                 )}
             </Animated.View>
@@ -321,7 +326,6 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
 const styles = StyleSheet.create({
     container: {
         borderTopWidth: 1,
-        borderTopColor: '#e0e0e0',
         width: '100%',
         paddingBottom: Platform.OS === 'ios' ? 8 : 8,
     },
@@ -340,7 +344,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         marginRight: 8,
         borderWidth: 1,
-        borderColor: '#e0e0e0',
     },
     secondInput: {
         flex: 0.5,
@@ -372,7 +375,6 @@ const styles = StyleSheet.create({
     suggestionText: {
         fontSize: 20,
         fontFamily: 'Schoolbell',
-        color: '#333',
         textAlign: 'center',
     },
     lastTimeContainer: {
@@ -383,7 +385,6 @@ const styles = StyleSheet.create({
     lastTimeText: {
         fontSize: 16,
         fontFamily: 'Schoolbell',
-        color: '#888',
         textAlign: 'center',
     },
 });

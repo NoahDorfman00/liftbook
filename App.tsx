@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, Text, useColorScheme } from 'react-native';
+import { View, Text } from 'react-native';
+import { useTheme } from './theme';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
@@ -56,7 +57,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 }
 
 export default function App() {
-  const colorScheme = useColorScheme() || 'dark';
+  const theme = useTheme();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -70,7 +71,7 @@ export default function App() {
               screenOptions={{
                 headerShown: false,
                 contentStyle: {
-                  backgroundColor: colorScheme === 'dark' ? 'black' : 'white',
+                  backgroundColor: theme.paper,
                 },
               }}
             >
