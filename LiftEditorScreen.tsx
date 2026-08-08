@@ -32,7 +32,7 @@ import {
     formatDisplayDate,
     matchesQuery,
 } from './utils';
-import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
+import { buildTitleCandidates, buildMovementCandidates, getLastTimeNote } from './suggestionEngine';
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
@@ -704,116 +704,24 @@ const LiftEditorScreen: React.FC = () => {
         saveLift(updatedLift);
     };
 
-    const getLiftSortKey = (liftToScore: Lift) => {
-        const dateTimestamp = Date.parse(`${liftToScore.date}T00:00:00`);
-        const parsedDate = Number.isNaN(dateTimestamp) ? 0 : dateTimestamp;
-        const parsedId = Number.isNaN(Number(liftToScore.id)) ? 0 : Number(liftToScore.id);
-        return Math.max(parsedDate, parsedId);
-    };
 
-    const orderedLiftTitles = React.useMemo(() => {
-        const liftsArray = Object.values(allLifts);
-        const validTitles = liftsArray.filter(item => item?.title?.trim());
-        validTitles.sort((a, b) => getLiftSortKey(b) - getLiftSortKey(a));
-        const seen = new Set<string>();
-        const titles: string[] = [];
-        validTitles.forEach(item => {
-            const trimmed = item.title.trim();
-            const key = trimmed.toLowerCase();
-            if (trimmed && !seen.has(key)) {
-                seen.add(key);
-                titles.push(trimmed);
-            }
-        });
-        return titles;
-    }, [allLifts]);
-
-    const cycleSuggestions = React.useMemo(() => {
-        const liftsArray = Object.values(allLifts);
-        const sorted = liftsArray
-            .filter(l => l?.title?.trim())
-            .sort((a, b) => getLiftSortKey(a) - getLiftSortKey(b));
-
-        const mostRecentIdx = [...sorted]
-            .reverse()
-            .findIndex(l => l.id !== lift.id);
-        if (mostRecentIdx === -1) return [];
-        const lastIdx = sorted.length - 1 - mostRecentIdx;
-
-        const lastTitle = sorted[lastIdx].title.trim().toLowerCase();
-
-        // Find the previous occurrence of the same title
-        let prevIdx = -1;
-        for (let i = lastIdx - 1; i >= 0; i--) {
-            if (sorted[i].title.trim().toLowerCase() === lastTitle) {
-                prevIdx = i;
-                break;
-            }
-        }
-
-        // Slice between previous occurrence and most recent (exclusive on both ends),
-        // or take everything before if the title only appears once
-        const sliceStart = prevIdx === -1 ? 0 : prevIdx + 1;
-        const between = sorted.slice(sliceStart, lastIdx);
-
-        const seen = new Set<string>();
-        const titles: string[] = [];
-        between.forEach(l => {
-            const trimmed = l.title.trim();
-            const key = trimmed.toLowerCase();
-            if (key === lastTitle) return;
-            if (seen.has(key)) return;
-            seen.add(key);
-            titles.push(trimmed);
-        });
-
-        return titles;
-    }, [allLifts, lift.id]);
-
-    const suggestionContext = React.useMemo<'title' | 'movement' | 'weight' | null>(() => {
-        // Weight suggestions when editing a set (first field of double mode)
-        if (entryMode === 'double' && editingTarget === 'set') {
-            return 'weight';
-        }
-
+    // No suggestions while entering sets — the "last time" note covers that
+    const suggestionContext = React.useMemo<'title' | 'movement' | null>(() => {
         if (entryMode !== 'single') {
             return null;
         }
-        if (editingTarget === 'set') {
-            return null;
-        }
-        if (editingTarget === 'title') {
-            return 'title';
-        }
-        if (lift.title === '') {
+        if (editingTarget === 'title' || lift.title === '') {
             return 'title';
         }
         return 'movement';
     }, [entryMode, editingTarget, lift.title]);
 
-    // Ordered, deduped title candidates. Rebuilt only when the underlying data
-    // changes; the per-keystroke query filter below works on this small list.
-    const titleCandidates = React.useMemo(() => {
-        const seen = new Set<string>();
-        const candidates: string[] = [];
-        const push = (title: string) => {
-            const trimmed = title.trim();
-            if (!trimmed) return;
-            const key = trimmed.toLowerCase();
-            if (seen.has(key)) return;
-            seen.add(key);
-            candidates.push(trimmed);
-        };
-
-        // Priority 0: cycle-predicted next titles (what historically follows the most recent lift)
-        cycleSuggestions.forEach(push);
-        // Priority 1: user saved lift titles (most recent first)
-        orderedLiftTitles.forEach(push);
-        // Priority 2: default lift titles (alphabetical)
-        [...DEFAULT_LIFT_TITLES].sort((a, b) => a.localeCompare(b)).forEach(push);
-
-        return candidates;
-    }, [cycleSuggestions, orderedLiftTitles]);
+    // Candidate lists are rebuilt only when the underlying data changes; the
+    // per-keystroke query filters below work on these small lists.
+    const titleCandidates = React.useMemo(
+        () => buildTitleCandidates(allLifts, lift.id),
+        [allLifts, lift.id]
+    );
 
     const titleSuggestions = React.useMemo(() => {
         if (suggestionContext !== 'title') {
@@ -825,62 +733,10 @@ const LiftEditorScreen: React.FC = () => {
             .slice(0, 3);
     }, [suggestionContext, firstInputValue, titleCandidates]);
 
-    // Ordered, deduped movement candidates. Rebuilt only when the underlying
-    // data changes; the per-keystroke query filter below works on this list.
-    const movementCandidates = React.useMemo(() => {
-        const normalizedCurrentTitle = lift.title.trim().toLowerCase();
-
-        // Movements already in the current lift sort to the back (priority 4)
-        const existingNames = new Set<string>();
-        lift.movements.forEach((movement) => {
-            if (movement.name.trim()) {
-                existingNames.add(movement.name.trim().toLowerCase());
-            }
-        });
-
-        const priority1: string[] = []; // From same-titled lifts, recency + position order
-        const priority2: string[] = []; // From other lifts
-        const priority3: string[] = []; // Defaults
-        const priority4: string[] = []; // Already in current lift
-
-        const seen = new Set<string>();
-        const push = (name: string, bucket: string[]) => {
-            const trimmed = name.trim();
-            if (!trimmed) return;
-            const key = trimmed.toLowerCase();
-            if (seen.has(key)) return;
-            seen.add(key);
-            (existingNames.has(key) ? priority4 : bucket).push(trimmed);
-        };
-
-        const nameMatchedLifts: Lift[] = [];
-        const otherLifts: Lift[] = [];
-        Object.values(allLifts).forEach((liftItem) => {
-            if (liftItem.id === lift.id) {
-                return; // Skip current lift
-            }
-            const isNameMatched = liftItem.title &&
-                liftItem.title.trim().toLowerCase() === normalizedCurrentTitle;
-            (isNameMatched ? nameMatchedLifts : otherLifts).push(liftItem);
-        });
-
-        // Walk same-titled lifts most-recent-first, movements top-to-bottom
-        nameMatchedLifts.sort((a, b) => b.date.localeCompare(a.date));
-        nameMatchedLifts.forEach((liftItem) => {
-            liftItem.movements.forEach((movement) => push(movement.name, priority1));
-        });
-        otherLifts.forEach((liftItem) => {
-            liftItem.movements.forEach((movement) => push(movement.name, priority2));
-        });
-        DEFAULT_MOVEMENTS.forEach((name) => push(name, priority3));
-
-        // priority1 keeps recency + position order — do not sort it
-        priority2.sort((a, b) => a.localeCompare(b));
-        priority3.sort((a, b) => a.localeCompare(b));
-        priority4.sort((a, b) => a.localeCompare(b));
-
-        return [...priority1, ...priority2, ...priority3, ...priority4];
-    }, [allLifts, lift.id, lift.movements, lift.title]);
+    const movementCandidates = React.useMemo(
+        () => buildMovementCandidates(allLifts, lift),
+        [allLifts, lift]
+    );
 
     const movementSuggestions = React.useMemo(() => {
         if (suggestionContext !== 'movement') {
@@ -901,62 +757,7 @@ const LiftEditorScreen: React.FC = () => {
         ) {
             return null;
         }
-
-        const currentMovement = lift.movements[editingMovementIndex];
-        const movementName = currentMovement.name.trim();
-        if (!movementName) {
-            return null;
-        }
-        const normalizedName = movementName.toLowerCase();
-
-        const currentLiftSortKey = getLiftSortKey(lift);
-        let previousLift: Lift | null = null;
-        let previousLiftSortKey = -1;
-
-        const allLiftsArray = Object.values(allLifts);
-        for (const liftItem of allLiftsArray) {
-            if (liftItem.id === lift.id) {
-                continue;
-            }
-
-            const liftSortKey = getLiftSortKey(liftItem);
-            if (liftSortKey >= currentLiftSortKey) {
-                continue;
-            }
-
-            const hasMovement = liftItem.movements.some(
-                (movement: Movement) => movement.name.trim().toLowerCase() === normalizedName
-            );
-
-            if (hasMovement && liftSortKey > previousLiftSortKey) {
-                previousLiftSortKey = liftSortKey;
-                previousLift = liftItem;
-            }
-        }
-
-        if (!previousLift) {
-            return null;
-        }
-
-        const setParts: string[] = [];
-        for (const movement of previousLift.movements) {
-            if (movement.name.trim().toLowerCase() !== normalizedName) {
-                continue;
-            }
-            for (const set of movement.sets) {
-                const w = parseFloat(set.weight);
-                const r = parseFloat(set.reps);
-                if (Number.isFinite(w) && w > 0 && Number.isFinite(r) && r > 0) {
-                    setParts.push(`${set.weight}x${set.reps}`);
-                }
-            }
-        }
-
-        if (setParts.length === 0) {
-            return null;
-        }
-
-        return `last time: ${setParts.join(', ')}`;
+        return getLastTimeNote(allLifts, lift, lift.movements[editingMovementIndex].name);
     }, [allLifts, editingMovementIndex, editingTarget, lift]);
 
     const suggestionsForInput = React.useMemo(() => {

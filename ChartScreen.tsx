@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
-import { retrieveLifts, matchesQuery } from './utils';
+import { retrieveLifts, matchesQuery, compareLiftsByDateDesc } from './utils';
 
 type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Charts'>;
 
@@ -88,13 +88,7 @@ function formatDateLabel(dateStr: string): string {
 
 function findMostRecentMovement(allLifts: { [id: string]: Lift }): string | null {
     const liftsArray = Object.values(allLifts);
-    liftsArray.sort((a, b) => {
-        const dateCompare = b.date.localeCompare(a.date);
-        if (dateCompare !== 0) return dateCompare;
-        const idA = Number.isNaN(Number(a.id)) ? 0 : Number(a.id);
-        const idB = Number.isNaN(Number(b.id)) ? 0 : Number(b.id);
-        return idB - idA;
-    });
+    liftsArray.sort(compareLiftsByDateDesc);
     for (const lift of liftsArray) {
         for (let i = lift.movements.length - 1; i >= 0; i--) {
             if (lift.movements[i].name.trim()) {

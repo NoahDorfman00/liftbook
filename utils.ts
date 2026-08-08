@@ -25,6 +25,20 @@ export const splitIntoWords = (text: string): string[] =>
         .filter(word => word.length > 0)
         .map(word => word.toLowerCase());
 
+// Newest first: by logged date, then by numeric id (creation time) as the
+// tiebreaker. Shared by the lift list and the charts screen so they can't
+// drift apart. (Suggestion ranking uses its own key — see suggestionEngine.)
+export const compareLiftsByDateDesc = (
+    a: { date: string; id: string },
+    b: { date: string; id: string }
+): number => {
+    const dateCompare = (b.date || '').localeCompare(a.date || '');
+    if (dateCompare !== 0) return dateCompare;
+    const idA = Number.isNaN(Number(a.id)) ? 0 : Number(a.id);
+    const idB = Number.isNaN(Number(b.id)) ? 0 : Number(b.id);
+    return idB - idA;
+};
+
 // Each query word must match the start of a distinct target word
 export const matchesQuery = (text: string, query: string): boolean => {
     if (!query) return true;
