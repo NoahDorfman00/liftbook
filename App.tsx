@@ -8,7 +8,6 @@ import { LOCAL_STORAGE_KEYS } from './utils';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
-import HeavyShareScreen from './HeavyShareScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RNBootSplash from 'react-native-bootsplash';
@@ -23,7 +22,6 @@ const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ['liftbook://', 'https://liftbookapp.com'],
   config: {
     screens: {
-      Heavy: 'heavy',
       LiftList: '',
       LiftEditor: 'editor',
       Charts: 'charts',
@@ -155,15 +153,6 @@ export default function App() {
                   animationMatchesGesture: true,
                   gestureEnabled: true,
                   fullScreenGestureEnabled: true,
-                }}
-              />
-              <Stack.Screen
-                name="Heavy"
-                component={HeavyShareScreen}
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                  animation: 'slide_from_bottom',
                 }}
               />
             </Stack.Navigator>
