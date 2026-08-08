@@ -21,6 +21,25 @@ let loadPromise: Promise<LiftsMap> | null = null;
 let persistAllowed = true;
 let writeQueue: Promise<void> = Promise.resolve();
 
+// Subscribers (see useLifts) get an immutable snapshot of the cache; it is
+// replaced, never mutated, so React can detect changes by reference.
+let snapshot: LiftsMap = {};
+const listeners = new Set<() => void>();
+
+const notifyListeners = (): void => {
+    snapshot = { ...cache };
+    listeners.forEach(listener => listener());
+};
+
+export const subscribeToLifts = (listener: () => void): (() => void) => {
+    listeners.add(listener);
+    return () => {
+        listeners.delete(listener);
+    };
+};
+
+export const getLiftsSnapshot = (): LiftsMap => snapshot;
+
 const isDateString = (key: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(key);
 
 // Legacy blobs keyed entries by date (e.g. "2024-01-15") instead of lift id.
@@ -65,7 +84,7 @@ const persist = (): Promise<void> => {
 //   writes disabled, so the stored blob survives until the next launch.
 const loadStore = (): Promise<LiftsMap> => {
     if (!loadPromise) {
-        loadPromise = (async () => {
+        const load = async (): Promise<LiftsMap> => {
             let raw: string | null;
             try {
                 raw = await AsyncStorage.getItem(LOCAL_STORAGE_KEYS.LIFTS);
@@ -105,7 +124,11 @@ const loadStore = (): Promise<LiftsMap> => {
                 await persist();
             }
             return cache!;
-        })();
+        };
+        loadPromise = load().then(loaded => {
+            notifyListeners();
+            return loaded;
+        });
     }
     return loadPromise;
 };
@@ -137,6 +160,7 @@ export const retrieveLift = async (liftId: string): Promise<Lift | null> => {
 export const saveLiftLocally = async (lift: Lift): Promise<void> => {
     const lifts = await loadStore();
     lifts[lift.id] = lift;
+    notifyListeners();
     await persist();
 };
 
@@ -145,6 +169,7 @@ export const deleteLiftLocally = async (liftId: string): Promise<void> => {
     const lifts = await loadStore();
     if (lifts[liftId]) {
         delete lifts[liftId];
+        notifyListeners();
         await persist();
     }
 };
@@ -154,4 +179,6 @@ export const __resetLiftStoreForTests = (): void => {
     loadPromise = null;
     persistAllowed = true;
     writeQueue = Promise.resolve();
+    snapshot = {};
+    listeners.clear();
 };

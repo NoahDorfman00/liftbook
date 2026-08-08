@@ -1,11 +1,19 @@
-// Today's date as YYYY-MM-DD in the local timezone
-export const todayISO = (): string => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+// YYYY-MM-DD string to a local-timezone Date at midnight
+export const isoToDate = (iso: string): Date => {
+    const [year, month, day] = iso.split('-').map(Number);
+    return new Date(year, month - 1, day);
+};
+
+// Date to YYYY-MM-DD in the local timezone
+export const dateToISO = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
+
+// Today's date as YYYY-MM-DD in the local timezone
+export const todayISO = (): string => dateToISO(new Date());
 
 // Human-readable date for display, from a YYYY-MM-DD string
 export const formatDisplayDate = (dateStr: string): string =>

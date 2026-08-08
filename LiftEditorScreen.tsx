@@ -24,13 +24,9 @@ import EntryFooter, { EntryMode } from './EntryFooter';
 import MessageBubble from './MessageBubble';
 import { useKeyboardEvents } from './useKeyboardEvents';
 import { RootStackParamList, Lift, Movement } from './types';
-import {
-    retrieveLift,
-    retrieveLifts,
-    saveLiftLocally,
-    deleteLiftLocally,
-} from './liftStore';
-import { todayISO, formatDisplayDate, matchesQuery } from './utils';
+import { retrieveLift, saveLiftLocally, deleteLiftLocally } from './liftStore';
+import { useLifts } from './useLifts';
+import { todayISO, isoToDate, dateToISO, formatDisplayDate, matchesQuery } from './utils';
 import { useTheme } from './theme';
 import { buildTitleCandidates, buildMovementCandidates, getLastTimeNote } from './suggestionEngine';
 
@@ -173,7 +169,7 @@ const LiftEditorScreen: React.FC = () => {
     // Ignore keyboard-hide resets briefly after an intentional transition
     const dismissGuardUntilRef = useRef(0);
 
-    const [allLifts, setAllLifts] = useState<{ [id: string]: Lift }>({});
+    const allLifts = useLifts();
     const [firstInputValue, setFirstInputValue] = useState('');
     const [secondInputValue, setSecondInputValue] = useState('');
     const [focusRequest, setFocusRequest] = useState(0);
@@ -250,19 +246,7 @@ const LiftEditorScreen: React.FC = () => {
 
     const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
     // The picker's Date is derived from lift.date — one source of truth
-    const pickerDate = React.useMemo(() => {
-        const [year, month, day] = lift.date.split('-').map(Number);
-        return new Date(year, month - 1, day);
-    }, [lift.date]);
-
-    useEffect(() => {
-        const loadAllLifts = async () => {
-            const liftsMap = await retrieveLifts();
-            setAllLifts(liftsMap);
-        };
-
-        loadAllLifts();
-    }, []);
+    const pickerDate = React.useMemo(() => isoToDate(lift.date), [lift.date]);
 
     useEffect(() => {
         if (route.params?.liftId) {
@@ -345,15 +329,13 @@ const LiftEditorScreen: React.FC = () => {
 
     // No retry loop: if the target's layout isn't measured yet, the row's
     // onLayout callback below triggers the scroll as soon as it lands.
-    const attemptScrollToActiveTarget = scrollToActiveEditingTarget;
-
     const scheduleScrollToActiveTarget = React.useCallback(() => {
         if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => attemptScrollToActiveTarget());
+            requestAnimationFrame(() => scrollToActiveEditingTarget());
         } else {
-            attemptScrollToActiveTarget();
+            scrollToActiveEditingTarget();
         }
-    }, [attemptScrollToActiveTarget]);
+    }, [scrollToActiveEditingTarget]);
 
     const registerTitleLayout = React.useCallback((layout: LayoutRectangle) => {
         titleLayoutRef.current = layout;
@@ -396,10 +378,10 @@ const LiftEditorScreen: React.FC = () => {
     // Scroll whenever the editing target or the visible area changes
     useEffect(() => {
         if (editingTarget !== 'none') {
-            attemptScrollToActiveTarget();
+            scrollToActiveEditingTarget();
         }
     }, [
-        attemptScrollToActiveTarget,
+        scrollToActiveEditingTarget,
         editingMovementIndex,
         editingSetIndex,
         editingTarget,
@@ -450,7 +432,6 @@ const LiftEditorScreen: React.FC = () => {
             }
 
             setIsLoading(false);
-            setAllLifts(prev => ({ ...prev, [updatedLiftData.id]: updatedLiftData }));
         } catch (error) {
             console.error('Error loading lift:', error);
             setIsLoading(false);
@@ -469,7 +450,6 @@ const LiftEditorScreen: React.FC = () => {
 
             // Save locally using the existing utility function
             await saveLiftLocally(liftWithDate);
-            setAllLifts(prev => ({ ...prev, [liftWithDate.id]: liftWithDate }));
         } catch (error) {
             console.error('Error saving lift:', error);
         }
@@ -596,7 +576,6 @@ const LiftEditorScreen: React.FC = () => {
                         saveLift(newLift);
                         setEditing({ target: 'none' }, { dismissKeyboard: true });
                         setPendingDeleteMovementIndex(null);
-                        setAllLifts(prev => ({ ...prev, [newLift.id]: newLift }));
                     },
                 },
             ]
@@ -630,7 +609,6 @@ const LiftEditorScreen: React.FC = () => {
                         saveLift(newLift);
                         setEditing({ target: 'none' }, { dismissKeyboard: true });
                         setPendingDeleteSet(null);
-                        setAllLifts(prev => ({ ...prev, [newLift.id]: newLift }));
                     },
                 },
             ]
@@ -658,11 +636,6 @@ const LiftEditorScreen: React.FC = () => {
                     style: 'destructive',
                     onPress: async () => {
                         await deleteLiftLocally(lift.id);
-                        setAllLifts(prev => {
-                            const updated = { ...prev };
-                            delete updated[lift.id];
-                            return updated;
-                        });
                         navigation.navigate('LiftList');
                     }
                 }
@@ -679,14 +652,10 @@ const LiftEditorScreen: React.FC = () => {
             return;
         }
 
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-
         // Persist so the list screen sees the new date
         const updatedLift: Lift = {
             ...lift,
-            date: `${year}-${month}-${day}`,
+            date: dateToISO(date),
         };
 
         updateLift(updatedLift);
@@ -780,8 +749,8 @@ const LiftEditorScreen: React.FC = () => {
         if (editingRef.current.target === 'none' && liftRef.current.title.trim().length > 0) {
             setEditing({ target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX }, { first: '' });
         }
-        attemptScrollToActiveTarget();
-    }, [attemptScrollToActiveTarget, setEditing]);
+        scrollToActiveEditingTarget();
+    }, [scrollToActiveEditingTarget, setEditing]);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.surface }]}>
@@ -935,6 +904,7 @@ const LiftEditorScreen: React.FC = () => {
                         <View onLayout={handleFooterLayout}>
                             <EntryFooter
                                 mode={entryMode}
+                                keyboardHeight={keyboardHeight}
                                 firstValue={firstInputValue}
                                 secondValue={secondInputValue}
                                 onFirstValueChange={setFirstInputValue}

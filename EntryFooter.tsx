@@ -11,13 +11,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PanGestureHandler, State as GestureState } from 'react-native-gesture-handler';
-import { useKeyboardEvents } from './useKeyboardEvents';
 import { useTheme } from './theme';
 
 export type EntryMode = 'single' | 'double';
 
 interface EntryFooterProps {
     mode: EntryMode;
+    /** Current keyboard height, owned by the parent screen */
+    keyboardHeight: number;
     firstValue: string;
     secondValue: string;
     onFirstValueChange: (value: string) => void;
@@ -40,6 +41,7 @@ const isValidNumber = (value: string): boolean => {
 
 const EntryFooter: React.FC<EntryFooterProps> = ({
     mode,
+    keyboardHeight,
     firstValue,
     secondValue,
     onFirstValueChange,
@@ -61,7 +63,8 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     const secondInputRef = useRef<TextInput>(null);
     const isSubmitting = useRef(false);
     const warningTimeout = useRef<NodeJS.Timeout | null>(null);
-    const keyboardHeight = useRef(new Animated.Value(0));
+    const keyboardOffset = useRef(new Animated.Value(0));
+    const prevKeyboardHeightRef = useRef(0);
     const hasTriggeredDismissRef = useRef(false);
 
     const showWarningMessage = (message: string) => {
@@ -99,34 +102,31 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
         }
     }, [focusRequest]);
 
-    const animateToKeyboard = (target: number) => {
+    // Track the parent-owned keyboard height: animate the footer to sit on
+    // top of the keyboard, and treat a drop to zero as a dismissal.
+    useEffect(() => {
+        const target = Math.max(0, keyboardHeight - (insets.bottom || 0) - 8);
         if (Platform.OS === 'ios') {
-            Animated.spring(keyboardHeight.current, {
+            Animated.spring(keyboardOffset.current, {
                 toValue: target,
                 useNativeDriver: true,
                 tension: 65,
                 friction: 11,
             }).start();
         } else {
-            Animated.timing(keyboardHeight.current, {
+            Animated.timing(keyboardOffset.current, {
                 toValue: target,
                 duration: 100,
                 useNativeDriver: true,
             }).start();
         }
-    };
 
-    useKeyboardEvents(
-        (e) => {
-            animateToKeyboard(Math.max(0, e.endCoordinates.height - (insets.bottom || 0) - 8));
-        },
-        () => {
-            animateToKeyboard(0);
-            if (!isSubmitting.current && onKeyboardDismiss) {
-                onKeyboardDismiss();
-            }
+        const wasVisible = prevKeyboardHeightRef.current > 0;
+        prevKeyboardHeightRef.current = keyboardHeight;
+        if (keyboardHeight === 0 && wasVisible && !isSubmitting.current && onKeyboardDismiss) {
+            onKeyboardDismiss();
         }
-    );
+    }, [keyboardHeight, insets.bottom, onKeyboardDismiss]);
 
     // Clear any pending warning timer on unmount
     useEffect(() => {
@@ -211,12 +211,19 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                         borderTopColor: theme.line,
                         transform: [
                             {
-                                translateY: Animated.multiply(keyboardHeight.current, -1),
+                                translateY: Animated.multiply(keyboardOffset.current, -1),
                             },
                         ],
                     }
                 ]}
             >
+                {/* When the footer is translated above the keyboard, this fills
+                    the gap below it (visible around the keyboard's rounded
+                    corners) so the background reaches the screen bottom. */}
+                <View
+                    pointerEvents="none"
+                    style={[styles.bottomExtension, { backgroundColor: theme.surface }]}
+                />
                 {showWarning && (
                     <View style={[
                         styles.warningContainer,
@@ -328,6 +335,13 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         width: '100%',
         paddingBottom: Platform.OS === 'ios' ? 8 : 8,
+    },
+    bottomExtension: {
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        height: 600,
     },
     inputContainer: {
         flexDirection: 'row',

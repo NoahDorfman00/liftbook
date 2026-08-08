@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LiftPreviewList from './LiftPreviewList';
 import { LiftPreview, RootStackParamList } from './types';

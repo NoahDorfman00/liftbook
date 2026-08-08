@@ -5,6 +5,8 @@ import {
     retrieveLift,
     saveLiftLocally,
     deleteLiftLocally,
+    subscribeToLifts,
+    getLiftsSnapshot,
     __resetLiftStoreForTests,
 } from '../liftStore';
 import { Lift } from '../types';
@@ -230,6 +232,71 @@ describe('saving and deleting', () => {
         delete lifts['100'];
 
         expect(await retrieveLift('100')).toEqual(a);
+    });
+});
+
+describe('subscriptions', () => {
+    it('starts with an empty snapshot and fills it once the load completes', async () => {
+        const a = lift('100', '2026-01-01', 'Push Day');
+        await seed({ '100': a });
+
+        expect(getLiftsSnapshot()).toEqual({});
+        await retrieveLifts();
+        expect(getLiftsSnapshot()).toEqual({ '100': a });
+    });
+
+    it('notifies subscribers on load, save, and delete', async () => {
+        await seed({ '100': lift('100', '2026-01-01', 'Push Day') });
+
+        const listener = jest.fn();
+        subscribeToLifts(listener);
+
+        await retrieveLifts();
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        await saveLiftLocally(lift('200', '2026-01-02', 'Pull Day'));
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(getLiftsSnapshot()['200']).toBeDefined();
+
+        await deleteLiftLocally('100');
+        expect(listener).toHaveBeenCalledTimes(3);
+        expect(getLiftsSnapshot()['100']).toBeUndefined();
+    });
+
+    it('does not notify for a no-op delete', async () => {
+        await seed({ '100': lift('100', '2026-01-01', 'Push Day') });
+        await retrieveLifts();
+
+        const listener = jest.fn();
+        subscribeToLifts(listener);
+
+        await deleteLiftLocally('999');
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('replaces the snapshot reference on change instead of mutating it', async () => {
+        await seed({ '100': lift('100', '2026-01-01', 'Push Day') });
+        await retrieveLifts();
+
+        const before = getLiftsSnapshot();
+        await saveLiftLocally(lift('200', '2026-01-02', 'Pull Day'));
+        const after = getLiftsSnapshot();
+
+        expect(after).not.toBe(before);
+        expect(before['200']).toBeUndefined();
+        expect(after['200']).toBeDefined();
+    });
+
+    it('stops notifying after unsubscribe', async () => {
+        await seed({ '100': lift('100', '2026-01-01', 'Push Day') });
+        await retrieveLifts();
+
+        const listener = jest.fn();
+        const unsubscribe = subscribeToLifts(listener);
+        unsubscribe();
+
+        await saveLiftLocally(lift('200', '2026-01-02', 'Pull Day'));
+        expect(listener).not.toHaveBeenCalled();
     });
 });
 
