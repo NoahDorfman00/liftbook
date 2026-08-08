@@ -16,7 +16,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
 import { retrieveLifts, matchesQuery } from './utils';
-import { DEFAULT_MOVEMENTS } from './suggestions';
 
 type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Charts'>;
 
@@ -144,14 +143,13 @@ function aggregateChartData(
     return points;
 }
 
+// Only movements that actually appear in the user's lifts — the chart has
+// nothing to plot for anything else, so defaults are not suggested here.
 function getAllMovementNames(allLifts: { [id: string]: Lift }): string[] {
     const lastUsed = new Map<string, string>(); // lowercase name -> most recent date
     const displayName = new Map<string, string>(); // lowercase name -> original casing
 
-    const liftsArray = Object.values(allLifts);
-    liftsArray.sort((a, b) => a.date.localeCompare(b.date));
-
-    for (const lift of liftsArray) {
+    for (const lift of Object.values(allLifts)) {
         for (const movement of lift.movements) {
             const trimmed = movement.name.trim();
             if (!trimmed) continue;
@@ -164,23 +162,10 @@ function getAllMovementNames(allLifts: { [id: string]: Lift }): string[] {
         }
     }
 
-    for (const defaultMov of DEFAULT_MOVEMENTS) {
-        const key = defaultMov.trim().toLowerCase();
-        if (!lastUsed.has(key)) {
-            displayName.set(key, defaultMov.trim());
-        }
-    }
-
-    const usedNames = Array.from(lastUsed.entries())
+    // Most recently used first
+    return Array.from(lastUsed.entries())
         .sort((a, b) => b[1].localeCompare(a[1]))
         .map(([key]) => displayName.get(key)!);
-
-    const unusedNames = Array.from(displayName.keys())
-        .filter(key => !lastUsed.has(key))
-        .sort((a, b) => a.localeCompare(b))
-        .map(key => displayName.get(key)!);
-
-    return [...usedNames, ...unusedNames];
 }
 
 function buildLinePath(
