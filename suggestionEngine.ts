@@ -1,21 +1,15 @@
 import { Lift } from './types';
 import { DEFAULT_LIFT_TITLES, DEFAULT_MOVEMENTS } from './suggestions';
+import { compareLiftsByDateDesc } from './utils';
 
-// Recency key for suggestion ranking: a lift counts as "active" at either its
-// logged date or its creation time (numeric id), whichever is later. This is
-// deliberately different from the list/chart ordering, which is date-first —
-// suggestions care about what the user actually did most recently.
-export const liftRecencyKey = (lift: Lift): number => {
-    const dateTimestamp = Date.parse(`${lift.date}T00:00:00`);
-    const parsedDate = Number.isNaN(dateTimestamp) ? 0 : dateTimestamp;
-    const parsedId = Number.isNaN(Number(lift.id)) ? 0 : Number(lift.id);
-    return Math.max(parsedDate, parsedId);
-};
+// Recency everywhere in the app means the lift's logged date, with creation
+// time (numeric id) only breaking ties within the same date — entering an
+// old workout today must not make it rank as the most recent one.
 
 // Unique lift titles, most recently used first
 const orderedLiftTitles = (allLifts: { [id: string]: Lift }): string[] => {
     const validTitles = Object.values(allLifts).filter(item => item?.title?.trim());
-    validTitles.sort((a, b) => liftRecencyKey(b) - liftRecencyKey(a));
+    validTitles.sort(compareLiftsByDateDesc);
     const seen = new Set<string>();
     const titles: string[] = [];
     validTitles.forEach(item => {
@@ -35,7 +29,7 @@ const orderedLiftTitles = (allLifts: { [id: string]: Lift }): string[] => {
 const cycleSuggestions = (allLifts: { [id: string]: Lift }, currentLiftId: string): string[] => {
     const sorted = Object.values(allLifts)
         .filter(l => l?.title?.trim())
-        .sort((a, b) => liftRecencyKey(a) - liftRecencyKey(b));
+        .sort((a, b) => compareLiftsByDateDesc(b, a)); // oldest first
 
     const mostRecentIdx = [...sorted]
         .reverse()
@@ -142,7 +136,7 @@ export const buildMovementCandidates = (
     });
 
     // Walk same-titled lifts most-recent-first, movements top-to-bottom
-    nameMatchedLifts.sort((a, b) => b.date.localeCompare(a.date));
+    nameMatchedLifts.sort(compareLiftsByDateDesc);
     nameMatchedLifts.forEach((liftItem) => {
         liftItem.movements.forEach((movement) => push(movement.name, priority1));
     });
@@ -172,17 +166,14 @@ export const getLastTimeNote = (
     }
     const normalizedName = trimmedName.toLowerCase();
 
-    const currentKey = liftRecencyKey(currentLift);
     let previousLift: Lift | null = null;
-    let previousKey = -1;
 
     for (const liftItem of Object.values(allLifts)) {
         if (liftItem.id === currentLift.id) {
             continue;
         }
-
-        const key = liftRecencyKey(liftItem);
-        if (key >= currentKey) {
+        // Only lifts strictly older than the current one
+        if (compareLiftsByDateDesc(liftItem, currentLift) <= 0) {
             continue;
         }
 
@@ -190,8 +181,8 @@ export const getLastTimeNote = (
             (movement) => movement.name.trim().toLowerCase() === normalizedName
         );
 
-        if (hasMovement && key > previousKey) {
-            previousKey = key;
+        // Keep the newest qualifying lift
+        if (hasMovement && (!previousLift || compareLiftsByDateDesc(liftItem, previousLift) < 0)) {
             previousLift = liftItem;
         }
     }

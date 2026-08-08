@@ -2,7 +2,6 @@ import {
     buildTitleCandidates,
     buildMovementCandidates,
     getLastTimeNote,
-    liftRecencyKey,
 } from '../suggestionEngine';
 import { Lift } from '../types';
 
@@ -21,12 +20,31 @@ const lift = (
 const byId = (...lifts: Lift[]): { [id: string]: Lift } =>
     Object.fromEntries(lifts.map(l => [l.id, l]));
 
-describe('liftRecencyKey', () => {
-    it('uses the later of logged date and numeric-id creation time', () => {
-        const backdated = lift('1700000000000', '2020-01-01', 'Push Day');
-        const dated = lift('not-a-number', '2026-01-01', 'Pull Day');
-        expect(liftRecencyKey(backdated)).toBe(1700000000000);
-        expect(liftRecencyKey(dated)).toBe(Date.parse('2026-01-01T00:00:00'));
+describe('recency semantics', () => {
+    it('ranks by lift date, not entry time: a backdated lift entered recently stays old', () => {
+        const current = lift('current', '2026-02-01', 'Push Day', []);
+        const lifts = byId(
+            // Created most recently (huge id) but logged for an old date
+            lift('9999999999999', '2026-01-05', 'Push Day', [{ name: 'From Backdated' }]),
+            lift('1', '2026-01-25', 'Push Day', [{ name: 'From Newer Date' }]),
+        );
+        const candidates = buildMovementCandidates(lifts, current);
+        expect(candidates.slice(0, 2)).toEqual(['From Newer Date', 'From Backdated']);
+    });
+
+    it('last-time note picks the lift with the latest date, not the latest entry time', () => {
+        const current = lift('5', '2026-02-01', 'Push Day', [{ name: 'Bench Press' }]);
+        const lifts = byId(
+            // Entered recently, but logged for an early date
+            lift('9999999999998', '2026-01-05', 'Push Day', [
+                { name: 'Bench Press', sets: [{ weight: '95', reps: '10' }] },
+            ]),
+            // Logged closer to the current lift
+            lift('2', '2026-01-25', 'Push Day', [
+                { name: 'Bench Press', sets: [{ weight: '135', reps: '8' }] },
+            ]),
+        );
+        expect(getLastTimeNote(lifts, current, 'Bench Press')).toBe('last time: 135x8');
     });
 });
 

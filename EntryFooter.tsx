@@ -229,6 +229,10 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                 )}
                 <View style={styles.inputContainer}>
                     <TextInput
+                        // iOS only applies keyboardType/returnKeyType on focus;
+                        // remount when the mode changes so the right keyboard
+                        // appears (the focus request then refocuses the field)
+                        key={mode}
                         ref={firstInputRef}
                         style={[
                             styles.input,

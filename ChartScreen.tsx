@@ -140,7 +140,7 @@ function aggregateChartData(
 // Only movements that actually appear in the user's lifts — the chart has
 // nothing to plot for anything else, so defaults are not suggested here.
 function getAllMovementNames(allLifts: { [id: string]: Lift }): string[] {
-    const lastUsed = new Map<string, string>(); // lowercase name -> most recent date
+    const lastUsed = new Map<string, Lift>(); // lowercase name -> most recent lift containing it
     const displayName = new Map<string, string>(); // lowercase name -> original casing
 
     for (const lift of Object.values(allLifts)) {
@@ -150,15 +150,15 @@ function getAllMovementNames(allLifts: { [id: string]: Lift }): string[] {
             const key = trimmed.toLowerCase();
             displayName.set(key, trimmed);
             const prev = lastUsed.get(key);
-            if (!prev || lift.date > prev) {
-                lastUsed.set(key, lift.date);
+            if (!prev || compareLiftsByDateDesc(lift, prev) < 0) {
+                lastUsed.set(key, lift);
             }
         }
     }
 
     // Most recently used first
     return Array.from(lastUsed.entries())
-        .sort((a, b) => b[1].localeCompare(a[1]))
+        .sort((a, b) => compareLiftsByDateDesc(a[1], b[1]))
         .map(([key]) => displayName.get(key)!);
 }
 
