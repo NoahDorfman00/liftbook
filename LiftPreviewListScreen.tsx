@@ -5,7 +5,8 @@ import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LiftPreviewList from './LiftPreviewList';
 import { LiftPreview, RootStackParamList } from './types';
-import { retrieveLifts, deleteLiftLocally, compareLiftsByDateDesc } from './utils';
+import { retrieveLifts, deleteLiftLocally } from './liftStore';
+import { compareLiftsByDateDesc } from './utils';
 
 type LiftPreviewListScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftList'>;
 

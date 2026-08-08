@@ -29,10 +29,8 @@ import {
     retrieveLifts,
     saveLiftLocally,
     deleteLiftLocally,
-    todayISO,
-    formatDisplayDate,
-    matchesQuery,
-} from './utils';
+} from './liftStore';
+import { todayISO, formatDisplayDate, matchesQuery } from './utils';
 import { buildTitleCandidates, buildMovementCandidates, getLastTimeNote } from './suggestionEngine';
 
 type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'LiftEditor'>;

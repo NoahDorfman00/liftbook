@@ -15,7 +15,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
-import { retrieveLifts, matchesQuery, compareLiftsByDateDesc } from './utils';
+import { retrieveLifts } from './liftStore';
+import { matchesQuery, compareLiftsByDateDesc } from './utils';
 
 type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Charts'>;
 
