@@ -171,13 +171,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     </Pressable>
                 </View>
             ))}
-            <Pressable onPress={onEmptyLinePress} android_ripple={null}>
+            <Pressable
+                onPress={onEmptyLinePress}
+                android_ripple={null}
+                // Measured here (not on the inner View) so the reported y is
+                // relative to the movement row, which the scroll logic needs
+                onLayout={(event) => onAddSetLayout?.(event.nativeEvent.layout)}
+            >
                 <View
                     style={[
                         styles.emptyLine,
                         showSetPlaceholder && styles.placeholderLine,
                     ]}
-                    onLayout={(event) => onAddSetLayout?.(event.nativeEvent.layout)}
                 >
                     {showSetPlaceholder && (
                         <Text style={[styles.text, styles.setText, styles.placeholderText]}>

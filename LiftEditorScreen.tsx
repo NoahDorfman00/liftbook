@@ -236,6 +236,8 @@ const LiftEditorScreen: React.FC = () => {
     }, []);
 
     const scrollViewRef = useRef<ScrollView>(null);
+    const scrollViewHeightRef = useRef(0);
+    const keyboardHeightRef = useRef(0);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [footerHeight, setFooterHeight] = useState(0);
     const [contentHeight, setContentHeight] = useState(10000);
@@ -274,6 +276,7 @@ const LiftEditorScreen: React.FC = () => {
         const keyboardWillShow = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
             (e) => {
+                keyboardHeightRef.current = e.endCoordinates.height;
                 setKeyboardHeight(e.endCoordinates.height);
             }
         );
@@ -281,6 +284,7 @@ const LiftEditorScreen: React.FC = () => {
         const keyboardWillHide = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
             () => {
+                keyboardHeightRef.current = 0;
                 setKeyboardHeight(0);
             }
         );
@@ -339,8 +343,12 @@ const LiftEditorScreen: React.FC = () => {
             return false;
         }
 
-        const SCROLL_MARGIN = 128;
-        const scrollY = Math.max(0, targetY - SCROLL_MARGIN);
+        // Center the active row in the area that stays visible above the
+        // keyboard, rather than pinning it a fixed margin from the top.
+        const viewportHeight = scrollViewHeightRef.current || 600;
+        const visibleHeight = Math.max(160, viewportHeight - keyboardHeightRef.current);
+        const margin = Math.max(96, visibleHeight * 0.4);
+        const scrollY = Math.max(0, targetY - margin);
         scrollViewRef.current.scrollTo({ y: scrollY, animated: true });
         return true;
     }, []);
@@ -593,14 +601,13 @@ const LiftEditorScreen: React.FC = () => {
                 // After editing a set in the middle, dismiss the footer but keep it visible
                 setEditing({ target: 'none' }, { dismissKeyboard: true });
             } else {
-                // After adding a set (or editing the last one), line up the next set entry
+                // After adding a set (or editing the last one), line up the next
+                // set entry. The editing-change effect and the row's onLayout
+                // callbacks handle scrolling to keep it in view.
                 setEditing(
                     { target: 'set', movementIndex, setIndex: newLift.movements[movementIndex].sets.length },
                     { focus: true, first: '', second: '' }
                 );
-                setTimeout(() => {
-                    scrollViewRef.current?.scrollToEnd({ animated: true });
-                }, 100);
             }
         }
     };
@@ -1053,6 +1060,9 @@ const LiftEditorScreen: React.FC = () => {
                         ]}
                         keyboardShouldPersistTaps="handled"
                         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                        onLayout={(event) => {
+                            scrollViewHeightRef.current = event.nativeEvent.layout.height;
+                        }}
                     >
                         <View
                             style={styles.notebookBackground}
