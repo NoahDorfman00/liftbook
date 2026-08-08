@@ -445,7 +445,10 @@ const LiftEditorScreen: React.FC = () => {
                     setEditing({ target: 'none' }, { dismissKeyboard: true });
                 } else {
                     // Otherwise transition straight to adding the first movement
-                    setEditing({ target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX }, { first: '' });
+                    setEditing(
+                        { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
+                        { first: '', focus: true }
+                    );
                 }
             } else {
                 const isExistingMovement =
@@ -1074,7 +1077,7 @@ const LiftEditorScreen: React.FC = () => {
                                                 onPress={() => {
                                                     setEditing(
                                                         { target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX },
-                                                        { first: '' }
+                                                        { first: '', focus: true }
                                                     );
                                                 }}
                                                 android_ripple={null}
