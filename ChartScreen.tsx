@@ -1,21 +1,28 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
-    Modal,
     TextInput,
     FlatList,
     Dimensions,
     Image,
+    Animated,
+    Keyboard,
+    LayoutChangeEvent,
+    Pressable,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureDetector } from 'react-native-gesture-handler';
+import ReAnimated, { withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
 import { useLifts } from './useLifts';
+import { useDrawer } from './useDrawer';
+import { useKeyboardEvents } from './useKeyboardEvents';
 import { matchesQuery, compareLiftsByDateDesc } from './utils';
 import { useTheme } from './theme';
 
@@ -23,14 +30,23 @@ type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, '
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'All';
 
+type ChartMode = 'weight' | 'volume';
+
 interface ChartDataPoint {
     date: string;
     minWeight: number;
     avgWeight: number;
     maxWeight: number;
+    volume: number;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+// The picker slides up as a sheet so the chart stays visible above it and
+// selections preview live. Together with its toggle button it takes 40%
+// of the screen.
+const SELECT_BUTTON_HEIGHT = 58;
+const PICKER_HEIGHT = Math.round(SCREEN_HEIGHT * 0.4) - SELECT_BUTTON_HEIGHT;
 const CHART_PADDING_LEFT = 52;
 const CHART_PADDING_RIGHT = 20;
 const CHART_PADDING_TOP = 16;
@@ -42,6 +58,11 @@ const TIME_RANGES: { label: string; value: TimeRange }[] = [
     { label: '6M', value: '6M' },
     { label: '1Y', value: '1Y' },
     { label: 'All', value: 'All' },
+];
+
+const CHART_MODES: { label: string; value: ChartMode }[] = [
+    { label: 'weight', value: 'weight' },
+    { label: 'volume', value: 'volume' },
 ];
 
 function getRangeStartDate(range: TimeRange): Date | null {
@@ -81,6 +102,13 @@ function niceTickValues(min: number, max: number, targetCount: number): number[]
     return ticks;
 }
 
+function formatTickLabel(tick: number): string {
+    if (Math.abs(tick) >= 10000) {
+        return `${Math.round((tick / 1000) * 10) / 10}k`;
+    }
+    return String(tick);
+}
+
 function formatDateLabel(dateStr: string): string {
     const d = new Date(dateStr + 'T12:00:00Z');
     const month = d.toLocaleString('default', { month: 'short', timeZone: 'UTC' });
@@ -107,10 +135,12 @@ function aggregateChartData(
     range: TimeRange
 ): ChartDataPoint[] {
     const rangeStart = getRangeStartDate(range);
-    const dateMap: { [date: string]: number[] } = {};
+    const dateMap: { [date: string]: { weights: number[]; volume: number } } = {};
     const normalizedName = movementName.trim().toLowerCase();
 
     for (const lift of Object.values(allLifts)) {
+        // Un-migrated legacy lifts can lack a date; nothing to plot them at
+        if (!lift.date) continue;
         if (rangeStart) {
             const liftDate = new Date(lift.date + 'T12:00:00Z');
             if (liftDate < rangeStart) continue;
@@ -120,19 +150,24 @@ function aggregateChartData(
             for (const set of movement.sets) {
                 const w = parseFloat(set.weight);
                 if (Number.isFinite(w) && w > 0) {
-                    if (!dateMap[lift.date]) dateMap[lift.date] = [];
-                    dateMap[lift.date].push(w);
+                    if (!dateMap[lift.date]) dateMap[lift.date] = { weights: [], volume: 0 };
+                    dateMap[lift.date].weights.push(w);
+                    const r = parseFloat(set.reps);
+                    if (Number.isFinite(r) && r > 0) {
+                        dateMap[lift.date].volume += w * r;
+                    }
                 }
             }
         }
     }
 
     const points: ChartDataPoint[] = Object.entries(dateMap)
-        .map(([date, weights]) => ({
+        .map(([date, { weights, volume }]) => ({
             date,
             minWeight: Math.min(...weights),
             avgWeight: weights.reduce((a, b) => a + b, 0) / weights.length,
             maxWeight: Math.max(...weights),
+            volume,
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -187,9 +222,37 @@ const ChartScreen: React.FC = () => {
     const allLifts = useLifts();
     const [selectedMovement, setSelectedMovement] = useState<string | null>(null);
     const [selectedRange, setSelectedRange] = useState<TimeRange>('All');
-    const [showMovementPicker, setShowMovementPicker] = useState(false);
+    const [chartMode, setChartMode] = useState<ChartMode>('weight');
     const [searchQuery, setSearchQuery] = useState('');
-    const searchInputRef = useRef<TextInput>(null);
+    // How far the keyboard intrudes past the bottom safe-area inset; the
+    // picker grows by this much so its visible portion stays constant
+    const [keyboardOverlap, setKeyboardOverlap] = useState(0);
+    const [chartAreaHeight, setChartAreaHeight] = useState(0);
+
+    // Clear transient search/keyboard state on any open/close transition
+    const onDrawerChange = useCallback(() => {
+        setSearchQuery('');
+        Keyboard.dismiss();
+    }, []);
+    const drawer = useDrawer(PICKER_HEIGHT, 'bottom', onDrawerChange);
+
+    useKeyboardEvents(
+        (e) => {
+            const overlap = Math.max(0, e.endCoordinates.height - (insets.bottom || 34));
+            drawer.extraHeightSV.value = overlap;
+            setKeyboardOverlap(overlap);
+            if (drawer.isOpen) {
+                drawer.heightSV.value = withTiming(PICKER_HEIGHT + overlap, { duration: 250 });
+            }
+        },
+        () => {
+            drawer.extraHeightSV.value = 0;
+            setKeyboardOverlap(0);
+            if (drawer.isOpen) {
+                drawer.heightSV.value = withTiming(PICKER_HEIGHT, { duration: 250 });
+            }
+        }
+    );
 
     // Until the user picks a movement, chart the one they most recently logged
     const defaultMovement = useMemo(() => findMostRecentMovement(allLifts), [allLifts]);
@@ -197,8 +260,11 @@ const ChartScreen: React.FC = () => {
 
     const chartData = useMemo(() => {
         if (!activeMovement) return [];
-        return aggregateChartData(allLifts, activeMovement, selectedRange);
-    }, [allLifts, activeMovement, selectedRange]);
+        const points = aggregateChartData(allLifts, activeMovement, selectedRange);
+        // A day can have weights but no reps logged; it has no volume to plot
+        if (chartMode === 'volume') return points.filter(p => p.volume > 0);
+        return points;
+    }, [allLifts, activeMovement, selectedRange, chartMode]);
 
     const allMovementNames = useMemo(
         () => getAllMovementNames(allLifts),
@@ -212,19 +278,31 @@ const ChartScreen: React.FC = () => {
     }, [allMovementNames, searchQuery]);
 
     const chartWidth = SCREEN_WIDTH - 32;
-    const chartHeight = 320;
+    // Fit the chart to whatever vertical space the picker leaves it,
+    // reserving room for the title row, mode switcher, legend, and range row
+    const chartHeight = chartAreaHeight > 0
+        ? Math.max(100, Math.min(320, chartAreaHeight - 185))
+        : 320;
     const plotWidth = chartWidth - CHART_PADDING_LEFT - CHART_PADDING_RIGHT;
     const plotHeight = chartHeight - CHART_PADDING_TOP - CHART_PADDING_BOTTOM;
 
+    const handleChartAreaLayout = useCallback((e: LayoutChangeEvent) => {
+        const h = Math.round(e.nativeEvent.layout.height);
+        setChartAreaHeight(prev => (Math.abs(prev - h) > 1 ? h : prev));
+    }, []);
+
     const { yTicks, xLabels, lines } = useMemo(() => {
+        const empty = [] as { x: number; y: number }[];
         if (chartData.length === 0) {
-            return { yTicks: [] as number[], xLabels: [] as { label: string; x: number }[], lines: { min: [] as { x: number; y: number }[], avg: [] as { x: number; y: number }[], max: [] as { x: number; y: number }[] } };
+            return { yTicks: [] as number[], xLabels: [] as { label: string; x: number }[], lines: { min: empty, avg: empty, max: empty, volume: empty } };
         }
 
         let allMin = Infinity, allMax = -Infinity;
         for (const p of chartData) {
-            if (p.minWeight < allMin) allMin = p.minWeight;
-            if (p.maxWeight > allMax) allMax = p.maxWeight;
+            const lo = chartMode === 'volume' ? p.volume : p.minWeight;
+            const hi = chartMode === 'volume' ? p.volume : p.maxWeight;
+            if (lo < allMin) allMin = lo;
+            if (hi > allMax) allMax = hi;
         }
         const yT = niceTickValues(allMin, allMax, 5);
         const yMin = yT[0];
@@ -236,9 +314,10 @@ const ChartScreen: React.FC = () => {
         const toY = (val: number) =>
             CHART_PADDING_TOP + plotHeight - ((val - yMin) / yRange) * plotHeight;
 
-        const minPts = chartData.map((p, i) => ({ x: toX(i), y: toY(p.minWeight) }));
-        const avgPts = chartData.map((p, i) => ({ x: toX(i), y: toY(p.avgWeight) }));
-        const maxPts = chartData.map((p, i) => ({ x: toX(i), y: toY(p.maxWeight) }));
+        const minPts = chartMode === 'weight' ? chartData.map((p, i) => ({ x: toX(i), y: toY(p.minWeight) })) : empty;
+        const avgPts = chartMode === 'weight' ? chartData.map((p, i) => ({ x: toX(i), y: toY(p.avgWeight) })) : empty;
+        const maxPts = chartMode === 'weight' ? chartData.map((p, i) => ({ x: toX(i), y: toY(p.maxWeight) })) : empty;
+        const volumePts = chartMode === 'volume' ? chartData.map((p, i) => ({ x: toX(i), y: toY(p.volume) })) : empty;
 
         const maxXLabels = 5;
         const step = Math.max(1, Math.ceil(chartData.length / maxXLabels));
@@ -255,18 +334,14 @@ const ChartScreen: React.FC = () => {
             }
         }
 
-        return { yTicks: yT, xLabels: xL, lines: { min: minPts, avg: avgPts, max: maxPts } };
-    }, [chartData, plotWidth, plotHeight]);
+        return { yTicks: yT, xLabels: xL, lines: { min: minPts, avg: avgPts, max: maxPts, volume: volumePts } };
+    }, [chartData, chartMode, plotWidth, plotHeight]);
 
+    // Selecting a movement previews it on the chart without closing the
+    // picker, so the user can click through movements and compare
     const handleSelectMovement = useCallback((name: string) => {
         setSelectedMovement(name);
-        setShowMovementPicker(false);
-        setSearchQuery('');
-    }, []);
-
-    const openPicker = useCallback(() => {
-        setSearchQuery('');
-        setShowMovementPicker(true);
+        Keyboard.dismiss();
     }, []);
 
     const hasData = chartData.length > 0;
@@ -274,6 +349,14 @@ const ChartScreen: React.FC = () => {
     return (
         <View style={[styles.safeArea, { backgroundColor: theme.surface, paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]}>
             <View style={[styles.container, { backgroundColor: theme.paper }]}>
+                {/* With the picker open, a tap anywhere above it that isn't an
+                    actual control dismisses it; the controls inside (back,
+                    mode, range) claim their own taps first */}
+                <Pressable
+                    style={styles.dismissArea}
+                    onPress={() => drawer.setOpen(false)}
+                    disabled={!drawer.isOpen}
+                >
                 <View style={[styles.header, { borderBottomColor: theme.line, backgroundColor: theme.surface }]}>
                     <View style={styles.headerCenter}>
                         <Text style={[styles.headerTitle, { color: theme.textStrong }]}>Charts</Text>
@@ -289,12 +372,29 @@ const ChartScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
 
-                <View style={[styles.chartContainer, { backgroundColor: theme.paper }]}>
-                    <TouchableOpacity onPress={openPicker}>
-                        <Text style={[styles.chartTitle, { color: theme.textStrong }]} numberOfLines={1}>
-                            {activeMovement || 'Select Movement'}
-                        </Text>
-                    </TouchableOpacity>
+                <View style={[styles.chartContainer, { backgroundColor: theme.paper }]} onLayout={handleChartAreaLayout}>
+                    <Text style={[styles.chartTitle, { color: theme.textStrong }]} numberOfLines={1}>
+                        {activeMovement || 'Select Movement'}
+                    </Text>
+                    <View style={styles.modeBar}>
+                        {CHART_MODES.map(({ label, value }) => (
+                            <TouchableOpacity
+                                key={value}
+                                style={styles.modeButton}
+                                onPress={() => setChartMode(value)}
+                            >
+                                <Text
+                                    style={[
+                                        styles.modeText,
+                                        { color: theme.textTertiary },
+                                        chartMode === value && [styles.modeTextActive, { color: theme.textStrong }],
+                                    ]}
+                                >
+                                    {label}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
                     {hasData ? (
                         <Svg width={chartWidth} height={chartHeight}>
                             {/* Grid lines */}
@@ -337,7 +437,7 @@ const ChartScreen: React.FC = () => {
                                         fontSize={13}
                                         fill={theme.textSecondary}
                                     >
-                                        {tick}
+                                        {formatTickLabel(tick)}
                                     </SvgText>
                                 );
                             })}
@@ -375,41 +475,59 @@ const ChartScreen: React.FC = () => {
                                 strokeWidth={1}
                             />
 
-                            {/* Min line */}
-                            <Path
-                                d={buildLinePath(lines.min)}
-                                stroke={theme.chartMin}
-                                strokeWidth={2}
-                                fill="none"
-                                strokeLinecap="round"
-                            />
-                            {lines.min.map((pt, i) => (
-                                <Circle key={`min-${i}`} cx={pt.x} cy={pt.y} r={3} fill={theme.chartMin} />
-                            ))}
+                            {chartMode === 'weight' ? (
+                                <>
+                                    {/* Min line */}
+                                    <Path
+                                        d={buildLinePath(lines.min)}
+                                        stroke={theme.chartMin}
+                                        strokeWidth={2}
+                                        fill="none"
+                                        strokeLinecap="round"
+                                    />
+                                    {lines.min.map((pt, i) => (
+                                        <Circle key={`min-${i}`} cx={pt.x} cy={pt.y} r={3} fill={theme.chartMin} />
+                                    ))}
 
-                            {/* Avg line */}
-                            <Path
-                                d={buildLinePath(lines.avg)}
-                                stroke={theme.chartAvg}
-                                strokeWidth={2}
-                                fill="none"
-                                strokeLinecap="round"
-                            />
-                            {lines.avg.map((pt, i) => (
-                                <Circle key={`avg-${i}`} cx={pt.x} cy={pt.y} r={3} fill={theme.chartAvg} />
-                            ))}
+                                    {/* Avg line */}
+                                    <Path
+                                        d={buildLinePath(lines.avg)}
+                                        stroke={theme.chartAvg}
+                                        strokeWidth={2}
+                                        fill="none"
+                                        strokeLinecap="round"
+                                    />
+                                    {lines.avg.map((pt, i) => (
+                                        <Circle key={`avg-${i}`} cx={pt.x} cy={pt.y} r={3} fill={theme.chartAvg} />
+                                    ))}
 
-                            {/* Max line */}
-                            <Path
-                                d={buildLinePath(lines.max)}
-                                stroke={theme.chartMax}
-                                strokeWidth={2.5}
-                                fill="none"
-                                strokeLinecap="round"
-                            />
-                            {lines.max.map((pt, i) => (
-                                <Circle key={`max-${i}`} cx={pt.x} cy={pt.y} r={3.5} fill={theme.chartMax} />
-                            ))}
+                                    {/* Max line */}
+                                    <Path
+                                        d={buildLinePath(lines.max)}
+                                        stroke={theme.chartMax}
+                                        strokeWidth={2.5}
+                                        fill="none"
+                                        strokeLinecap="round"
+                                    />
+                                    {lines.max.map((pt, i) => (
+                                        <Circle key={`max-${i}`} cx={pt.x} cy={pt.y} r={3.5} fill={theme.chartMax} />
+                                    ))}
+                                </>
+                            ) : (
+                                <>
+                                    {/* Volume line */}
+                                    <Path
+                                        d={buildLinePath(lines.volume)}
+                                        stroke={theme.chartMax}
+                                        strokeWidth={2.5}
+                                        fill="none"
+                                        strokeLinecap="round"
+                                    />
+                                    {lines.volume.map((pt, i) => (
+                                        <Circle key={`vol-${i}`} cx={pt.x} cy={pt.y} r={3.5} fill={theme.chartMax} />
+                                    ))}
+                                </>
+                            )}
                         </Svg>
                     ) : (
                         <View style={styles.noDataContainer}>
@@ -420,100 +538,129 @@ const ChartScreen: React.FC = () => {
                     )}
                     {hasData && (
                         <View style={styles.legend}>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendSwatch, { backgroundColor: theme.chartMax }]} />
-                                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>max</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendSwatch, { backgroundColor: theme.chartAvg }]} />
-                                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>avg</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                                <View style={[styles.legendSwatch, { backgroundColor: theme.chartMin }]} />
-                                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>min</Text>
-                            </View>
+                            {chartMode === 'weight' ? (
+                                <>
+                                    <View style={styles.legendItem}>
+                                        <View style={[styles.legendSwatch, { backgroundColor: theme.chartMax }]} />
+                                        <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>max</Text>
+                                    </View>
+                                    <View style={styles.legendItem}>
+                                        <View style={[styles.legendSwatch, { backgroundColor: theme.chartAvg }]} />
+                                        <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>avg</Text>
+                                    </View>
+                                    <View style={styles.legendItem}>
+                                        <View style={[styles.legendSwatch, { backgroundColor: theme.chartMin }]} />
+                                        <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>min</Text>
+                                    </View>
+                                </>
+                            ) : (
+                                <View style={styles.legendItem}>
+                                    <View style={[styles.legendSwatch, { backgroundColor: theme.chartMax }]} />
+                                    <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>Σ (weight × reps)</Text>
+                                </View>
+                            )}
                         </View>
                     )}
-                </View>
-
-                <View style={[styles.rangeBar, { borderTopColor: theme.line, backgroundColor: theme.surface }]}>
-                    {TIME_RANGES.map(({ label, value }) => (
-                        <TouchableOpacity
-                            key={value}
-                            style={styles.rangeButton}
-                            onPress={() => setSelectedRange(value)}
-                        >
-                            <Text
-                                style={[
-                                    styles.rangeText,
-                                    { color: theme.textTertiary },
-                                    selectedRange === value && [styles.rangeTextActive, { color: theme.textStrong }],
-                                ]}
+                    <View style={styles.rangeBar}>
+                        {TIME_RANGES.map(({ label, value }) => (
+                            <TouchableOpacity
+                                key={value}
+                                style={styles.rangeButton}
+                                onPress={() => setSelectedRange(value)}
                             >
-                                {label}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-
-                <Modal
-                    visible={showMovementPicker}
-                    animationType="slide"
-                    presentationStyle="pageSheet"
-                    onRequestClose={() => setShowMovementPicker(false)}
-                >
-                    <SafeAreaView style={[styles.modalSafeArea, { backgroundColor: theme.paper }]}>
-                        <View style={styles.modalContainer}>
-                            <View style={[styles.modalHeader, { borderBottomColor: theme.line }]}>
-                                <Text style={[styles.modalTitle, { color: theme.textStrong }]}>Select Movement</Text>
-                                <TouchableOpacity
-                                    onPress={() => {
-                                        setShowMovementPicker(false);
-                                        setSearchQuery('');
-                                    }}
+                                <Text
+                                    style={[
+                                        styles.rangeText,
+                                        { color: theme.textTertiary },
+                                        selectedRange === value && [styles.rangeTextActive, { color: theme.textStrong }],
+                                    ]}
                                 >
-                                    <Text style={[styles.modalClose, { color: theme.textSecondary }]}>Done</Text>
+                                    {label}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+                </Pressable>
+
+                <GestureDetector gesture={drawer.handleGesture}>
+                    <View
+                        style={[styles.selectButtonBar, { borderTopColor: theme.line, backgroundColor: theme.surface }]}
+                    >
+                        <ReAnimated.View style={[styles.selectButton, drawer.pressedStyle]}>
+                            <Text style={[styles.selectButtonText, { color: theme.textStrong }]}>Select Movement</Text>
+                            <Animated.View style={{ transform: [{ rotate: drawer.chevronRotate }] }}>
+                                <Svg width={20} height={14} viewBox="0 0 20 14">
+                                    {/* Hand-drawn chevron pointing up; flips down while the picker is open */}
+                                    <Path
+                                        d="M2.5 11.8 Q6 7.5 9.8 3.4 Q10.3 3 10.9 3.6 Q14.5 7.2 17.8 11.2"
+                                        fill="none"
+                                        stroke={theme.textStrong}
+                                        strokeWidth={2.3}
+                                        strokeLinecap="round"
+                                    />
+                                </Svg>
+                            </Animated.View>
+                        </ReAnimated.View>
+                    </View>
+                </GestureDetector>
+
+                {/* Always mounted; the animated height clips it closed so the
+                    drag can reveal it progressively */}
+                <ReAnimated.View
+                    style={[styles.picker, drawer.drawerStyle, { backgroundColor: theme.surface }]}
+                >
+                    <View
+                        style={[
+                            styles.pickerContent,
+                            {
+                                height: PICKER_HEIGHT + keyboardOverlap,
+                                paddingBottom: keyboardOverlap,
+                                borderTopColor: theme.line,
+                            },
+                        ]}
+                    >
+                        <TextInput
+                            style={[styles.searchInput, { borderColor: theme.line, color: theme.textStrong }]}
+                            placeholder="Search movements..."
+                            placeholderTextColor={theme.placeholder}
+                            keyboardAppearance={theme.isDark ? 'dark' : 'light'}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoCorrect={false}
+                            autoCapitalize="none"
+                        />
+                        <FlatList
+                            data={filteredMovements}
+                            keyExtractor={(item) => item}
+                            keyboardShouldPersistTaps="handled"
+                            onScrollEndDrag={(e) => {
+                                // Pulling the list down past its top swipes the sheet away
+                                if (e.nativeEvent.contentOffset.y < -40) {
+                                    drawer.setOpen(false);
+                                }
+                            }}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={styles.movementItem}
+                                    onPress={() => handleSelectMovement(item)}
+                                >
+                                    <Text style={[
+                                        styles.movementItemText,
+                                        { color: theme.textStrong },
+                                        item.toLowerCase() === activeMovement?.toLowerCase() &&
+                                            [styles.movementItemActive, { color: theme.textPrimary }],
+                                    ]}>
+                                        {item}
+                                    </Text>
                                 </TouchableOpacity>
-                            </View>
-                            <TextInput
-                                ref={searchInputRef}
-                                style={[styles.searchInput, { borderColor: theme.line, color: theme.textStrong }]}
-                                placeholder="Search movements..."
-                                placeholderTextColor={theme.placeholder}
-                                keyboardAppearance={theme.isDark ? 'dark' : 'light'}
-                                value={searchQuery}
-                                onChangeText={setSearchQuery}
-                                autoFocus
-                                autoCorrect={false}
-                                autoCapitalize="none"
-                            />
-                            <FlatList
-                                data={filteredMovements}
-                                keyExtractor={(item) => item}
-                                keyboardShouldPersistTaps="handled"
-                                automaticallyAdjustKeyboardInsets
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.movementItem}
-                                        onPress={() => handleSelectMovement(item)}
-                                    >
-                                        <Text style={[
-                                            styles.movementItemText,
-                                            { color: theme.textStrong },
-                                            item.toLowerCase() === activeMovement?.toLowerCase() &&
-                                                [styles.movementItemActive, { color: theme.textPrimary }],
-                                        ]}>
-                                            {item}
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                                ItemSeparatorComponent={() => (
-                                    <View style={[styles.movementSeparator, { backgroundColor: theme.line }]} />
-                                )}
-                            />
-                        </View>
-                    </SafeAreaView>
-                </Modal>
+                            )}
+                            ItemSeparatorComponent={() => (
+                                <View style={[styles.movementSeparator, { backgroundColor: theme.line }]} />
+                            )}
+                        />
+                    </View>
+                </ReAnimated.View>
             </View>
         </View>
     );
@@ -524,6 +671,9 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     container: {
+        flex: 1,
+    },
+    dismissArea: {
         flex: 1,
     },
     header: {
@@ -560,12 +710,34 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         textAlign: 'center',
         paddingBottom: 8,
+        maxWidth: '90%',
     },
     chartContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 16,
+        // With the picker and keyboard up there may be less room than the
+        // chart's minimum size; clip rather than bleed over the header
+        overflow: 'hidden',
+    },
+    modeBar: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 16,
+        paddingBottom: 8,
+    },
+    modeButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+    },
+    modeText: {
+        fontSize: 18,
+        fontFamily: 'Schoolbell',
+    },
+    modeTextActive: {
+        fontWeight: 'bold',
+        textDecorationLine: 'underline',
     },
     noDataContainer: {
         alignItems: 'center',
@@ -598,45 +770,46 @@ const styles = StyleSheet.create({
     },
     rangeBar: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingVertical: 16,
-        paddingHorizontal: 24,
-        borderTopWidth: 1,
+        justifyContent: 'center',
+        gap: 14,
+        paddingTop: 10,
     },
     rangeButton: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
     },
     rangeText: {
-        fontSize: 18,
+        fontSize: 16,
         fontFamily: 'Schoolbell',
     },
     rangeTextActive: {
         fontWeight: 'bold',
         textDecorationLine: 'underline',
     },
-    modalSafeArea: {
-        flex: 1,
-    },
-    modalContainer: {
-        flex: 1,
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+    selectButtonBar: {
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        borderBottomWidth: 1,
+        height: SELECT_BUTTON_HEIGHT,
+        justifyContent: 'center',
+        borderTopWidth: 1,
     },
-    modalTitle: {
-        fontSize: 24,
+    selectButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingHorizontal: 24,
+        paddingVertical: 8,
+    },
+    selectButtonText: {
+        fontSize: 28,
         fontFamily: 'Schoolbell',
         fontWeight: 'bold',
     },
-    modalClose: {
-        fontSize: 18,
-        fontFamily: 'Schoolbell',
+    picker: {
+        overflow: 'hidden',
+    },
+    pickerContent: {
+        borderTopWidth: 1,
     },
     searchInput: {
         marginHorizontal: 20,

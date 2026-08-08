@@ -6,22 +6,25 @@ import {
     TouchableOpacity,
     Text,
     Alert,
+    Animated,
     KeyboardAvoidingView,
     Platform,
-    Modal,
     Keyboard,
     Image,
     LayoutChangeEvent,
     LayoutRectangle,
     Pressable,
 } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import ReAnimated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
+import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
 import EntryFooter, { EntryMode } from './EntryFooter';
 import MessageBubble from './MessageBubble';
+import { useDrawer } from './useDrawer';
 import { useKeyboardEvents } from './useKeyboardEvents';
 import { RootStackParamList, Lift, Movement } from './types';
 import { retrieveLift, saveLiftLocally, deleteLiftLocally } from './liftStore';
@@ -34,6 +37,9 @@ type LiftEditorScreenNavigationProp = NativeStackNavigationProp<RootStackParamLi
 type LiftEditorScreenRouteProp = RouteProp<RootStackParamList, 'LiftEditor'>;
 
 const NEW_MOVEMENT_INDEX = -1;
+
+// Spinner (200) plus breathing room for the date dropdown under the header
+const DATE_DRAWER_HEIGHT = 232;
 
 // The single source of truth for what is being edited. Everything the old
 // implementation tracked in parallel flags (entryMode, editingTarget,
@@ -244,7 +250,10 @@ const LiftEditorScreen: React.FC = () => {
     const setLayoutsRef = useRef<Record<string, LayoutRectangle>>({});
     const addSetLayoutsRef = useRef<Record<number, LayoutRectangle>>({});
 
-    const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
+    // The date picker drops down from under the header, mirroring the
+    // charts screen's bottom sheet in reverse; spinner changes persist
+    // immediately, so dismissing it is the only "confirm"
+    const dateDrawer = useDrawer(DATE_DRAWER_HEIGHT, 'top', Keyboard.dismiss);
     // The picker's Date is derived from lift.date — one source of truth
     const pickerDate = React.useMemo(() => isoToDate(lift.date), [lift.date]);
 
@@ -643,10 +652,6 @@ const LiftEditorScreen: React.FC = () => {
         );
     };
 
-    const handleDatePress = () => {
-        setIsDatePickerVisible(true);
-    };
-
     const handleDateChange = (_: any, date?: Date) => {
         if (!date) {
             return;
@@ -767,11 +772,25 @@ const LiftEditorScreen: React.FC = () => {
                     </TouchableOpacity>
 
                     <View style={styles.headerCenter}>
-                        <TouchableOpacity onPress={handleDatePress}>
-                            <Text style={[styles.dateText, { color: theme.textStrong }]}>
-                                {formatDisplayDate(lift.date)}
-                            </Text>
-                        </TouchableOpacity>
+                        <GestureDetector gesture={dateDrawer.handleGesture}>
+                            <ReAnimated.View style={[styles.dateRow, dateDrawer.pressedStyle]}>
+                                <Text style={[styles.dateText, { color: theme.textStrong }]}>
+                                    {formatDisplayDate(lift.date)}
+                                </Text>
+                                <Animated.View style={{ transform: [{ rotate: dateDrawer.chevronRotate }] }}>
+                                    <Svg width={20} height={14} viewBox="0 0 20 14">
+                                        {/* Hand-drawn chevron pointing down; flips up while the picker is open */}
+                                        <Path
+                                            d="M2.5 2.2 Q6 6.5 9.8 10.6 Q10.3 11 10.9 10.4 Q14.5 6.8 17.8 2.8"
+                                            fill="none"
+                                            stroke={theme.textStrong}
+                                            strokeWidth={2.3}
+                                            strokeLinecap="round"
+                                        />
+                                    </Svg>
+                                </Animated.View>
+                            </ReAnimated.View>
+                        </GestureDetector>
                     </View>
 
                     <TouchableOpacity
@@ -782,7 +801,42 @@ const LiftEditorScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
 
-                <View style={styles.content}>
+                {/* Always mounted; the animated height clips it closed so the
+                    drag can reveal it progressively. Content is anchored to
+                    the bottom so it slides down with the drawer's edge. */}
+                <ReAnimated.View style={[styles.dateDrawer, dateDrawer.drawerStyle, { backgroundColor: theme.surface }]}>
+                    <View style={[styles.dateDrawerContent, { borderBottomColor: theme.line }]}>
+                        <DateTimePicker
+                            value={pickerDate}
+                            mode="date"
+                            display="spinner"
+                            onChange={handleDateChange}
+                            textColor={theme.textStrong}
+                            themeVariant={theme.isDark ? 'dark' : 'light'}
+                            style={styles.datePicker}
+                        />
+                        {/* The empty strip right of the wheels swipes the
+                            drawer closed like the handle does; it sits beside
+                            the spinner so the wheels stay untouched */}
+                        <GestureDetector gesture={dateDrawer.panelSwipeGesture}>
+                            <View style={styles.dateSwipeRight} />
+                        </GestureDetector>
+                    </View>
+                </ReAnimated.View>
+
+                {/* With the date picker open, touching anything below it —
+                    inputs and footer included — dismisses it. Capture phase
+                    observes the touch without claiming it, so the touched
+                    control still gets its tap. */}
+                <View
+                    style={styles.content}
+                    onStartShouldSetResponderCapture={() => {
+                        if (dateDrawer.isOpen) {
+                            dateDrawer.setOpen(false);
+                        }
+                        return false;
+                    }}
+                >
                     <ScrollView
                         ref={scrollViewRef}
                         style={[styles.scrollView, { backgroundColor: theme.paper }]}
@@ -928,39 +982,6 @@ const LiftEditorScreen: React.FC = () => {
                     )}
                 </View>
             </KeyboardAvoidingView>
-
-            {isDatePickerVisible && (
-                <Modal
-                    visible={isDatePickerVisible}
-                    animationType="slide"
-                    transparent={true}
-                    onRequestClose={() => setIsDatePickerVisible(false)}
-                >
-                    <View style={[styles.modalContainer, { backgroundColor: theme.overlay }]}>
-                        <View style={[styles.modalContent, { backgroundColor: theme.paper }]}>
-                            <View style={[styles.modalHeader, { borderBottomColor: theme.line }]}>
-                                <TouchableOpacity
-                                    style={styles.modalButton}
-                                    onPress={() => setIsDatePickerVisible(false)}
-                                >
-                                    <Text style={[styles.modalButtonText, { color: theme.textStrong }]}>
-                                        Done
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                            <DateTimePicker
-                                value={pickerDate}
-                                mode="date"
-                                display="spinner"
-                                onChange={handleDateChange}
-                                textColor={theme.textStrong}
-                                themeVariant={theme.isDark ? 'dark' : 'light'}
-                                style={styles.datePicker}
-                            />
-                        </View>
-                    </View>
-                </Modal>
-            )}
         </SafeAreaView>
     );
 };
@@ -995,10 +1016,36 @@ const styles = StyleSheet.create({
         height: 28,
         resizeMode: 'contain',
     },
+    dateRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     dateText: {
         fontSize: 32,
         fontWeight: 'bold',
         fontFamily: 'Schoolbell',
+    },
+    dateDrawer: {
+        overflow: 'hidden',
+    },
+    dateDrawerContent: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: DATE_DRAWER_HEIGHT,
+        justifyContent: 'center',
+        borderBottomWidth: 1,
+    },
+    // The spinner wheels span roughly the left 320pt; everything beyond
+    // them is fair game for swiping the drawer closed
+    dateSwipeRight: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        right: 0,
+        width: 76,
     },
     content: {
         flex: 1,
@@ -1026,29 +1073,6 @@ const styles = StyleSheet.create({
         top: 0,
         left: 0,
         right: 0,
-    },
-    modalContainer: {
-        flex: 1,
-        justifyContent: 'flex-end',
-    },
-    modalContent: {
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        paddingBottom: Platform.OS === 'ios' ? 20 : 0,
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        padding: 16,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    modalButton: {
-        padding: 8,
-    },
-    modalButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        fontFamily: 'Schoolbell',
     },
     datePicker: {
         height: 200,

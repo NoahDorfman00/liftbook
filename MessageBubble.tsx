@@ -77,7 +77,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     pendingDeleteSetIndex = null,
 }) => {
     const theme = useTheme();
-    const pressableHitSlop = { top: 2, bottom: 2, left: 0, right: 0 }; // 28px container, 24px touch area
+    // Rows shrink-wrap their text (alignSelf below) so blank paper beside
+    // them isn't tappable; a little horizontal slop keeps short labels
+    // comfortable to hit
+    const pressableHitSlop = { top: 2, bottom: 2, left: 8, right: 12 };
 
     const inkColor = { color: theme.textPrimary };
     const editingColor = { color: theme.editingText };
@@ -95,6 +98,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     onLayout={(event) => onTitleLayout?.(event.nativeEvent.layout)}
                 >
                     <Pressable
+                        style={styles.tightPress}
                         hitSlop={pressableHitSlop}
                         onPress={onTitlePress}
                         onLongPress={onTitleLongPress}
@@ -127,6 +131,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
         <>
             {prependEmptyLine && <View style={styles.emptyLine} />}
             <Pressable
+                style={styles.tightPress}
                 onPress={onMovementPress}
                 onLongPress={onMovementLongPress}
                 hitSlop={pressableHitSlop}
@@ -154,6 +159,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     onLayout={(event) => onSetLayout?.(idx, event.nativeEvent.layout)}
                 >
                     <Pressable
+                        style={styles.tightPress}
                         hitSlop={pressableHitSlop}
                         onLongPress={() => onSetLongPress && onSetLongPress(idx)}
                         onPress={() => onSetPress && onSetPress(idx)}
@@ -207,6 +213,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 };
 
 const styles = StyleSheet.create({
+    // Shrink the pressable to its text so blank paper beside it stays inert
+    tightPress: {
+        alignSelf: 'flex-start',
+    },
     lineContainer: {
         height: 24, // fits ruled line for sets
         justifyContent: 'flex-end',
@@ -246,9 +256,6 @@ const styles = StyleSheet.create({
     emptyLine: {
         height: 24,
         position: 'relative',
-    },
-    setLineContainer: {
-        // no negative margin here
     },
     placeholderLine: {
         justifyContent: 'flex-end',
