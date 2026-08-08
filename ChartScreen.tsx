@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Line, Path, Circle, Text as SvgText } from 'react-native-svg';
 import { RootStackParamList, Lift } from './types';
-import { retrieveLifts } from './liftStore';
+import { useLifts } from './useLifts';
 import { matchesQuery, compareLiftsByDateDesc } from './utils';
 import { useTheme } from './theme';
 
@@ -184,28 +184,21 @@ const ChartScreen: React.FC = () => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<ChartScreenNavigationProp>();
-    const [allLifts, setAllLifts] = useState<{ [id: string]: Lift }>({});
+    const allLifts = useLifts();
     const [selectedMovement, setSelectedMovement] = useState<string | null>(null);
     const [selectedRange, setSelectedRange] = useState<TimeRange>('All');
     const [showMovementPicker, setShowMovementPicker] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [isLoaded, setIsLoaded] = useState(false);
     const searchInputRef = useRef<TextInput>(null);
 
-    useEffect(() => {
-        (async () => {
-            const lifts = await retrieveLifts();
-            setAllLifts(lifts);
-            const recent = findMostRecentMovement(lifts);
-            if (recent) setSelectedMovement(recent);
-            setIsLoaded(true);
-        })();
-    }, []);
+    // Until the user picks a movement, chart the one they most recently logged
+    const defaultMovement = useMemo(() => findMostRecentMovement(allLifts), [allLifts]);
+    const activeMovement = selectedMovement ?? defaultMovement;
 
     const chartData = useMemo(() => {
-        if (!selectedMovement) return [];
-        return aggregateChartData(allLifts, selectedMovement, selectedRange);
-    }, [allLifts, selectedMovement, selectedRange]);
+        if (!activeMovement) return [];
+        return aggregateChartData(allLifts, activeMovement, selectedRange);
+    }, [allLifts, activeMovement, selectedRange]);
 
     const allMovementNames = useMemo(
         () => getAllMovementNames(allLifts),
@@ -276,8 +269,6 @@ const ChartScreen: React.FC = () => {
         setShowMovementPicker(true);
     }, []);
 
-    if (!isLoaded) return <View style={[styles.safeArea, { backgroundColor: theme.surface, paddingTop: insets.top || 59, paddingBottom: insets.bottom || 34 }]} />;
-
     const hasData = chartData.length > 0;
 
     return (
@@ -301,7 +292,7 @@ const ChartScreen: React.FC = () => {
                 <View style={[styles.chartContainer, { backgroundColor: theme.paper }]}>
                     <TouchableOpacity onPress={openPicker}>
                         <Text style={[styles.chartTitle, { color: theme.textStrong }]} numberOfLines={1}>
-                            {selectedMovement || 'Select Movement'}
+                            {activeMovement || 'Select Movement'}
                         </Text>
                     </TouchableOpacity>
                     {hasData ? (
@@ -423,7 +414,7 @@ const ChartScreen: React.FC = () => {
                     ) : (
                         <View style={styles.noDataContainer}>
                             <Text style={[styles.noDataText, { color: theme.textTertiary }]}>
-                                {selectedMovement ? 'no data for this range' : 'select a movement'}
+                                {activeMovement ? 'no data for this range' : 'select a movement'}
                             </Text>
                         </View>
                     )}
@@ -509,7 +500,7 @@ const ChartScreen: React.FC = () => {
                                         <Text style={[
                                             styles.movementItemText,
                                             { color: theme.textStrong },
-                                            item.toLowerCase() === selectedMovement?.toLowerCase() &&
+                                            item.toLowerCase() === activeMovement?.toLowerCase() &&
                                                 [styles.movementItemActive, { color: theme.textPrimary }],
                                         ]}>
                                             {item}
