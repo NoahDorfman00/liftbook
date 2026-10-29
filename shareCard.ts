@@ -86,13 +86,25 @@ export const canShareLift = (lift: Lift | null | undefined): boolean =>
     !!lift &&
     lift.movements.some((m) => m.sets.some((s) => parseWeight(s.weight) !== null));
 
-// Sent alongside the story image: the tappable way in for messaging apps
-export const buildShareMessage = (lift: Lift): string => `Try it → ${buildShareUrl(lift)}`;
+// Sent alongside the share image: a caption and the tappable way in. The
+// native sheet joins them per destination (LiftbookShare.m): "caption →
+// link" in most apps, "caption ↓ link" in Messages (which puts the link in
+// its own bubble below), nothing in story composers (they drop text).
+export const LIFT_SHARE_CAPTION = 'Try it';
+export const CHART_SHARE_CAPTION = 'Track yours on Liftbook';
+export const shareMessage = (caption: string, link: string): string => `${caption} → ${link}`;
+export const buildShareMessage = (lift: Lift): string => shareMessage(LIFT_SHARE_CAPTION, buildShareUrl(lift));
 
-// A shared chart has no lift to try, so its link is the App Store, tagged
-// with its own campaign token (App Store Connect → Sources → Campaigns)
-export const CHART_SHARE_URL = 'https://apps.apple.com/app/apple-store/id6755925820?pt=128332891&ct=chartshare&mt=8';
-export const CHART_SHARE_MESSAGE = `Track yours on Liftbook → ${CHART_SHARE_URL}`;
+// A shared chart has no lift to try, so its link goes to the App Store via
+// liftbookapp.com/get, which forwards the campaign token (App Store Connect
+// → Sources → Campaigns) and gives Messages a compact preview instead of
+// the App Store's full-width card
+export const CHART_SHARE_URL = 'https://liftbookapp.com/get?ct=chartshare';
+
+// What story composers (Instagram, Snapchat, …) get on the clipboard for
+// their link sticker: lift links are too long for Instagram's, and a story
+// viewer's next step is installing anyway. Direct to the App Store, no hop.
+export const STORY_SHARE_URL = 'https://apps.apple.com/app/apple-store/id6755925820?pt=128332891&ct=storyshare&mt=8';
 
 // --- link payload -----------------------------------------------------------
 // The lift travels IN the URL fragment — no server, nothing expires, and

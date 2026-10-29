@@ -7,10 +7,15 @@
 // card (it center-crops anything taller than ~4:3), everything else —
 // Instagram stories, Photos, AirDrop — gets the 9:16 story.
 //
-// Apps that take the image but drop the text that rides with it (story
-// composers) get the link on the clipboard instead, with a brief notice so
-// the user knows to paste it into a link sticker. Neither Instagram nor
-// Snapchat lets a third-party app attach a link to a story itself.
+// The caption + link that ride along are worded per destination: "Try it
+// → <link>" in most apps, "Try it ↓ <link>" in Messages (it puts the link
+// in its own bubble below the text).
+//
+// Apps that take the image but drop that text (story composers) get the
+// story link — the App Store — on the clipboard instead, with a brief
+// notice so the user knows to paste it into a link sticker. Neither
+// Instagram nor Snapchat lets a third-party app attach a link to a story
+// itself, and lift links are too long for Instagram's sticker.
 
 // Share extensions report their bundle id as the activity type; these
 // prefixes are the apps whose story composers drop shared text
@@ -23,6 +28,13 @@ static NSArray<NSString *> *LiftbookLinkDroppingApps(void)
     @"com.zhiliaoapp.musically.",  // TikTok
     @"com.facebook.Facebook.",     // Facebook
   ];
+}
+
+// Snapchat's extension does nothing with a file URL (Photos works because
+// it hands over image data), so it gets a decoded image instead
+static BOOL LiftbookIsSnapchat(UIActivityType activityType)
+{
+  return [activityType hasPrefix:@"com.toyopagroup.picaboo."];
 }
 
 static BOOL LiftbookDropsText(UIActivityType activityType)
@@ -99,7 +111,7 @@ static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
 @property (nonatomic, strong) NSURL *story;
 @property (nonatomic, strong) NSURL *message;
 @property (nonatomic, copy) NSString *title;
-@property (nonatomic, copy) NSString *link;
+@property (nonatomic, copy) NSString *storyLink;
 @property (nonatomic, weak) UIWindowScene *scene;
 @end
 
@@ -111,14 +123,14 @@ static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
 }
 
 // Asked once the user picks a destination, before it opens — the moment to
-// put the link on the clipboard for apps that will drop it
+// put the story link on the clipboard for apps that will drop the text
 - (id)activityViewController:(UIActivityViewController *)controller itemForActivityType:(UIActivityType)activityType
 {
 #if DEBUG
   NSLog(@"[LiftbookShare] activity type: %@", activityType);
 #endif
-  if (self.link.length > 0 && activityType && LiftbookDropsText(activityType)) {
-    NSString *link = self.link;
+  if (self.storyLink.length > 0 && activityType && LiftbookDropsText(activityType)) {
+    NSString *link = self.storyLink;
     UIWindowScene *scene = self.scene;
     dispatch_async(dispatch_get_main_queue(), ^{
       NSURL *url = [NSURL URLWithString:link];
@@ -130,7 +142,13 @@ static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
       LiftbookShowToast(scene, @"Link copied! Paste it into a link sticker");
     });
   }
-  return [activityType isEqualToString:UIActivityTypeMessage] ? self.message : self.story;
+  if ([activityType isEqualToString:UIActivityTypeMessage]) {
+    return self.message;
+  }
+  if (activityType && LiftbookIsSnapchat(activityType)) {
+    return [UIImage imageWithContentsOfFile:self.story.path] ?: self.story;
+  }
+  return self.story;
 }
 
 // the sheet's header: the lift title and the image, not the temp file name
@@ -142,6 +160,30 @@ static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
   metadata.iconProvider = image;
   metadata.imageProvider = image;
   return metadata;
+}
+
+@end
+
+// The caption and link, worded for where they're going
+@interface LiftbookShareText : NSObject <UIActivityItemSource>
+@property (nonatomic, copy) NSString *caption;
+@property (nonatomic, copy) NSString *link;
+@end
+
+@implementation LiftbookShareText
+
+- (id)activityViewControllerPlaceholderItem:(UIActivityViewController *)controller
+{
+  return @"";
+}
+
+- (id)activityViewController:(UIActivityViewController *)controller itemForActivityType:(UIActivityType)activityType
+{
+  if (activityType && LiftbookDropsText(activityType)) {
+    return nil; // dropped anyway; the story link is on the clipboard
+  }
+  NSString *arrow = [activityType isEqualToString:UIActivityTypeMessage] ? @"↓" : @"→";
+  return [NSString stringWithFormat:@"%@ %@ %@", self.caption, arrow, self.link];
 }
 
 @end
@@ -174,9 +216,9 @@ RCT_EXPORT_MODULE()
   return NO;
 }
 
-// story/message: paths (or file URIs) of the captured PNGs; text: sent with
-// them; link: copied for apps that drop the text. Resolves with whether the
-// user went through with a share.
+// story/message: paths (or file URIs) of the captured PNGs; caption + link:
+// sent with them; storyLink: copied for story composers, which drop text.
+// Resolves with whether the user went through with a share.
 RCT_EXPORT_METHOD(share:(NSDictionary *)options
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
@@ -197,11 +239,14 @@ RCT_EXPORT_METHOD(share:(NSDictionary *)options
   image.story = story;
   image.message = message;
   image.title = options[@"title"] ?: @"liftbook";
-  image.link = [options[@"link"] isKindOfClass:[NSString class]] ? options[@"link"] : nil;
+  image.storyLink = [options[@"storyLink"] isKindOfClass:[NSString class]] ? options[@"storyLink"] : nil;
   image.scene = presenter.view.window.windowScene;
   NSMutableArray *items = [NSMutableArray arrayWithObject:image];
-  if ([options[@"text"] isKindOfClass:[NSString class]]) {
-    [items addObject:options[@"text"]];
+  if ([options[@"caption"] isKindOfClass:[NSString class]] && [options[@"link"] isKindOfClass:[NSString class]]) {
+    LiftbookShareText *text = [LiftbookShareText new];
+    text.caption = options[@"caption"];
+    text.link = options[@"link"];
+    [items addObject:text];
   }
 
   UIActivityViewController *sheet = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];

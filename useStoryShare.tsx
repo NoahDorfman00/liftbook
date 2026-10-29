@@ -4,15 +4,30 @@ import { captureRef } from 'react-native-view-shot';
 import StoryCard from './StoryCard';
 import { buildStoryLayout, StoryLayout, StoryVariant } from './storyLayout';
 import { buildChartCardLayout, ChartCardMode, ChartCardPoint } from './chartCardLayout';
-import { buildShareMessage, buildShareUrl, canShareLift, CHART_SHARE_MESSAGE, CHART_SHARE_URL } from './shareCard';
+import {
+    buildShareUrl,
+    canShareLift,
+    CHART_SHARE_CAPTION,
+    CHART_SHARE_URL,
+    LIFT_SHARE_CAPTION,
+    shareMessage,
+    STORY_SHARE_URL,
+} from './shareCard';
 import { Lift } from './types';
 import { useTheme } from './theme';
 
 // Native share sheet that hands Messages the 3:4 card and everyone else the
-// story, and copies `link` for apps that drop the text
-// (ios/liftbook/LiftbookShare.m)
+// story, words the caption + link per destination, and copies `storyLink`
+// for story composers (ios/liftbook/LiftbookShare.m)
 const nativeShare: {
-    share(options: { story: string; message: string; title: string; text: string; link: string }): Promise<boolean>;
+    share(options: {
+        story: string;
+        message: string;
+        title: string;
+        caption: string;
+        link: string;
+        storyLink: string;
+    }): Promise<boolean>;
 } | undefined = Platform.OS === 'ios' ? NativeModules.LiftbookShare : undefined;
 
 const VARIANTS: StoryVariant[] = ['story', 'message'];
@@ -21,13 +36,13 @@ const VARIANTS: StoryVariant[] = ['story', 'message'];
 interface CardShare {
     story: StoryLayout;
     message: StoryLayout;
-    title: string;  // the share sheet's header
-    text: string;   // sent with the image
-    link: string;   // copied for apps that drop `text`
+    title: string;   // the share sheet's header
+    caption: string; // sent with the image, ahead of `link`
+    link: string;
     failure: string;
 }
 
-// Share a lift or a chart as an image plus a link message. Screens render
+// Share a lift or a chart as an image plus a captioned link. Screens render
 // the returned `element` somewhere in their tree: while a share is in
 // flight it mounts both cards (story and message) off-screen, captures them
 // to PNGs once they've laid out and drawn, then opens the share sheet.
@@ -60,7 +75,7 @@ export const useStoryShare = (allLifts: Record<string, Lift>) => {
                 story,
                 message,
                 title: lift.title.trim() || 'Lift',
-                text: buildShareMessage(lift),
+                caption: LIFT_SHARE_CAPTION,
                 link: buildShareUrl(lift),
                 failure: "Couldn't share this lift",
             });
@@ -75,7 +90,7 @@ export const useStoryShare = (allLifts: Record<string, Lift>) => {
                 story,
                 message,
                 title: movement.trim() || 'Chart',
-                text: CHART_SHARE_MESSAGE,
+                caption: CHART_SHARE_CAPTION,
                 link: CHART_SHARE_URL,
                 failure: "Couldn't share this chart",
             });
@@ -113,9 +128,16 @@ export const useStoryShare = (allLifts: Record<string, Lift>) => {
             const story = await captureRef(storyRef, { format: 'png', result: 'tmpfile' });
             if (nativeShare) {
                 const message = await captureRef(messageRef, { format: 'png', result: 'tmpfile' });
-                await nativeShare.share({ story, message, title: pending.title, text: pending.text, link: pending.link });
+                await nativeShare.share({
+                    story,
+                    message,
+                    title: pending.title,
+                    caption: pending.caption,
+                    link: pending.link,
+                    storyLink: STORY_SHARE_URL,
+                });
             } else {
-                await Share.share({ url: story, message: pending.text });
+                await Share.share({ url: story, message: shareMessage(pending.caption, pending.link) });
             }
         } catch {
             // dismissing the sheet resolves rather than throws, so this is a

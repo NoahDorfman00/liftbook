@@ -127,19 +127,30 @@ Instagram's URL scheme requires registering a Meta app ID; skipped unless
 the share sheet route proves clunky. Even that route can't add a link
 sticker: the `contentURL` attribution key is limited to approved partners.
 
-**Link on the clipboard (built, unverified on device):** when the picked
-destination is a story composer that drops shared text (Instagram,
-Threads, Snapchat, TikTok, Facebook — matched by share-extension bundle-id
-prefix in `LiftbookShare.m`), the image item's `itemForActivityType:` puts
-the share's link on the clipboard and shows a "Link copied! Paste it into a
-link sticker" pill for ~3 s in its own window above the share sheet and
-the extension's compose sheet. Messages, Mail, Copy etc. never touch the
-clipboard. To verify on the phone: (1) Debug builds log each picked
-activity type (`[LiftbookShare] activity type:`), so check the prefixes
-match; (2) the pill shows over Instagram's share sheet; (3) the long
-`/l#v1=` link pastes into a link sticker intact; (4) tapping the sticker
-lands on the `/l` page in Instagram's in-app browser (universal links don't
-fire there) and its "Open in Liftbook" button opens the app.
+**Caption wording per destination:** the text item is a
+`UIActivityItemSource` that writes `Try it → <link>` (or the chart's
+`Track yours on Liftbook → <link>`) for most apps, `↓` instead of `→` for
+Messages (it puts the link in its own bubble under the text), and nothing
+for story composers.
+
+**Story composers get the App Store link on the clipboard:** when the
+picked destination drops shared text (Instagram, Threads, Snapchat,
+TikTok, Facebook — matched by share-extension bundle-id prefix in
+`LiftbookShare.m`), the image item's `itemForActivityType:` copies
+`STORY_SHARE_URL` (App Store, `ct=storyshare`) and shows a "Link copied!
+Paste it into a link sticker" pill for ~3 s in its own window above the
+share sheet. Not the lift link: Instagram's link sticker rejected it as
+too long (tested Oct 2026 — typical lift links are ~200 chars and deflate
+only saves ~15%, so no encoding fixes that without a server), and a story
+viewer's next step is installing anyway. Messages, Mail, Copy etc. never
+touch the clipboard. Snapchat's extension silently does nothing with a
+file URL, so it's handed a decoded `UIImage` instead (unverified).
+
+**In-app browsers:** X's and Instagram's built-in browsers block the `/l`
+page's `liftbook://` "Open in Liftbook" button. The page detects them by
+user agent and shows "Tap ⋯ → Open in browser" instead (in Safari the
+universal link then opens the app); in any other browser, a tap that
+leaves the page showing for 1.5 s reveals the same hint.
 
 Prototype (`design/share-cards/story_card.py`) renders exact 1080×1920
 mockups with headless Chrome — it is the reference the app's layout
@@ -248,8 +259,21 @@ probably stronger brag than one workout.
   gaps show; dots on every session up to 30, then only first/best/latest;
   only the best value is labelled. Footer `N sessions · liftbookapp.com`.
 - **Link**: no lift to try, so the message is
-  `Track yours on Liftbook → <App Store link, ct=chartshare>` and that link
-  is what goes on the clipboard for story composers.
+  `Track yours on Liftbook → liftbookapp.com/get?ct=chartshare`. `/get`
+  (liftbookSite) forwards to the App Store with the `ct` token via a JS
+  redirect and carries its own compact preview (title + icon, no
+  og:image): the raw App Store link previewed in Messages as a full-width
+  card under the already full-width chart image. Verified with
+  LinkPresentation (`LPMetadataProvider`, what Messages uses): it reads
+  `/get`'s own tags and doesn't run the JS, so GitHub Pages works — no
+  server redirect needed. (A `Liftbook: …` title lost its prefix in the
+  preview; hence "Get Liftbook on the App Store".) Story composers get
+  the direct App Store link like lift shares.
+
+**Campaign tokens** (`ct=`, App Store Connect → Sources → Campaigns): one
+per profile you post from (`ig`, `x`, `tt`, `yt` via liftbookapp.com's
+short links) and one per kind of share — `sharelink` (`/l` page's App
+Store button), `chartshare`, `storyshare` (clipboard for story apps).
 - Preview cases live in `design/share-cards/preview.ts` alongside the lift
   card ones.
 
