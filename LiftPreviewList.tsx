@@ -19,12 +19,15 @@ import { useTheme } from './theme';
 interface LiftPreviewListProps {
     lifts: LiftPreview[];
     onSelectLift: (liftId: string) => void;
+    onShareLift: (liftId: string) => void;
     onDeleteLift: (liftId: string) => void;
     onCreateNewLift: () => void;
     onOpenCharts: () => void;
 }
 
 const ACTION_WIDTH = 80;
+// Share and Delete side by side behind the swipe
+const ACTIONS_WIDTH = ACTION_WIDTH * 2;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const PLUS_ICON_WIDTH = 28;
 const PLUS_BUTTON_HORIZONTAL_PADDING = 8;
@@ -59,6 +62,7 @@ const ChartIcon = ({ color }: { color: string }) => (
 const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     lifts,
     onSelectLift,
+    onShareLift,
     onDeleteLift,
     onCreateNewLift,
     onOpenCharts,
@@ -74,7 +78,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     ) => {
         const trans = progress.interpolate({
             inputRange: [0, 1],
-            outputRange: [ACTION_WIDTH, 0],
+            outputRange: [ACTIONS_WIDTH, 0],
             extrapolate: 'clamp',
         });
 
@@ -87,6 +91,15 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     },
                 ]}
             >
+                <TouchableOpacity
+                    style={[styles.shareButton, { backgroundColor: theme.textMuted }]}
+                    onPress={() => {
+                        closeSwipeable();
+                        onShareLift(liftId);
+                    }}
+                >
+                    <Text style={styles.actionButtonText}>Share</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.deleteButton, { backgroundColor: theme.destructive }]}
                     onPress={() => {
@@ -104,7 +117,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                         );
                     }}
                 >
-                    <Text style={styles.deleteButtonText}>Delete</Text>
+                    <Text style={styles.actionButtonText}>Delete</Text>
                 </TouchableOpacity>
             </Animated.View>
         );
@@ -260,14 +273,20 @@ const styles = StyleSheet.create({
     },
     rightAction: {
         marginVertical: 8,
-        width: ACTION_WIDTH,
+        width: ACTIONS_WIDTH,
+        flexDirection: 'row',
+    },
+    shareButton: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     deleteButton: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    deleteButtonText: {
+    actionButtonText: {
         color: 'white',
         fontWeight: '600',
         fontFamily: 'Schoolbell',

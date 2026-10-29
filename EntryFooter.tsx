@@ -29,6 +29,8 @@ interface EntryFooterProps {
     secondPlaceholder?: string;
     onKeyboardDismiss?: () => void;
     suggestions?: string[];
+    /** Sharer's numbers for this movement (imported lift) — shown above lastTimeNote */
+    sharedNote?: string | null;
     lastTimeNote?: string | null;
     onFirstFieldFocus?: () => void;
     /** Increment to focus the first input (0 = no request yet) */
@@ -52,6 +54,7 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
     secondPlaceholder = 'Enter reps...',
     onKeyboardDismiss,
     suggestions = [],
+    sharedNote,
     lastTimeNote,
     onFirstFieldFocus,
     focusRequest = 0,
@@ -317,6 +320,11 @@ const EntryFooter: React.FC<EntryFooterProps> = ({
                                 </TouchableOpacity>
                             </View>
                         ))}
+                    </View>
+                )}
+                {mode === 'double' && !!sharedNote && (
+                    <View style={styles.lastTimeContainer}>
+                        <Text style={[styles.lastTimeText, { color: theme.textSecondary }]}>{sharedNote}</Text>
                     </View>
                 )}
                 {mode === 'double' && !!lastTimeNote && (

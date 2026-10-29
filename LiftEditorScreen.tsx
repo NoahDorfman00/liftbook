@@ -27,6 +27,8 @@ import MessageBubble from './MessageBubble';
 import { useDrawer } from './useDrawer';
 import { useKeyboardEvents } from './useKeyboardEvents';
 import { RootStackParamList, Lift, Movement } from './types';
+import { buildSharedNote, canShareLift } from './shareCard';
+import { useStoryShare } from './useStoryShare';
 import { retrieveLift, saveLiftLocally, deleteLiftLocally } from './liftStore';
 import { useLifts } from './useLifts';
 import { todayISO, isoToDate, dateToISO, formatDisplayDate, matchesQuery } from './utils';
@@ -135,6 +137,36 @@ const MovementRow = React.memo<MovementRowProps>(({
     </View>
 ));
 
+// Hand-drawn share glyph (box with an arrow up), matching the sketchy
+// back/trash/chart icon style
+const ShareIcon = ({ color }: { color: string }) => (
+    <Svg width={26} height={26} viewBox="0 0 26 26" fill="none">
+        <Path
+            d="M9 11.9 Q6.3 11.6 6.2 12.3 Q5.8 16.6 6.1 21 Q6.1 21.8 7 21.9 Q13 22.5 19.1 21.8 Q19.9 21.7 19.9 20.9 Q20.3 16.5 19.9 12.2 Q19.9 11.6 17.2 11.9"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+        />
+        <Path
+            d="M13 15.8 Q12.9 10 13.1 4.8"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            fill="none"
+        />
+        <Path
+            d="M9.7 7.5 Q11.4 5.7 13 4 Q14.7 5.6 16.3 7.3"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+        />
+    </Svg>
+);
+
 // One SVG with a repeating 24px pattern instead of hundreds of 1px Views
 const RuledLines = React.memo(({ minHeight = 10000 }: { minHeight?: number }) => {
     const theme = useTheme();
@@ -176,6 +208,7 @@ const LiftEditorScreen: React.FC = () => {
     const dismissGuardUntilRef = useRef(0);
 
     const allLifts = useLifts();
+    const story = useStoryShare(allLifts);
     const [firstInputValue, setFirstInputValue] = useState('');
     const [secondInputValue, setSecondInputValue] = useState('');
     const [focusRequest, setFocusRequest] = useState(0);
@@ -420,8 +453,11 @@ const LiftEditorScreen: React.FC = () => {
             // Determine auto-focus behavior based on lift state
             const hasTitle = updatedLiftData.title.trim().length > 0;
             const hasMovements = updatedLiftData.movements.length > 0;
-            const lastMovement = hasMovements ? updatedLiftData.movements[updatedLiftData.movements.length - 1] : null;
-            const lastMovementHasSets = lastMovement && lastMovement.sets.length > 0;
+            // First movement still without sets: the last one mid-entry, or
+            // the first of several on an imported (shared) lift
+            const firstEmptyMovementIndex = updatedLiftData.movements.findIndex(
+                (movement) => movement.sets.length === 0
+            );
 
             if (!hasTitle) {
                 // New lift: focus on title
@@ -429,10 +465,10 @@ const LiftEditorScreen: React.FC = () => {
             } else if (!hasMovements) {
                 // Lift with only title: focus on movement
                 setEditing({ target: 'movementName', movementIndex: NEW_MOVEMENT_INDEX }, { focus: true });
-            } else if (!lastMovementHasSets) {
-                // Lift with movement at bottom with no sets: focus on set weight
+            } else if (firstEmptyMovementIndex >= 0) {
+                // Movement with no sets yet: focus on its first set's weight
                 setEditing(
-                    { target: 'set', movementIndex: updatedLiftData.movements.length - 1, setIndex: 0 },
+                    { target: 'set', movementIndex: firstEmptyMovementIndex, setIndex: 0 },
                     { focus: true }
                 );
             } else {
@@ -453,8 +489,13 @@ const LiftEditorScreen: React.FC = () => {
             const liftWithDate = {
                 ...liftToSave,
                 date: liftToSave.date || todayISO(),
-                // Clean up movements with no sets
-                movements: liftToSave.movements.filter(movement => movement.sets.length > 0)
+                // Clean up nameless movements with no sets. Named set-less
+                // movements are kept: imported (shared) lifts arrive as a
+                // list of names to be filled in one by one, and stripping
+                // the not-yet-filled ones on every save would eat them.
+                movements: liftToSave.movements.filter(
+                    movement => movement.sets.length > 0 || movement.name.trim().length > 0
+                )
             };
 
             // Save locally using the existing utility function
@@ -634,6 +675,8 @@ const LiftEditorScreen: React.FC = () => {
         }
     }, [setEditing]);
 
+    const handleShareLift = () => story.shareLift(liftRef.current);
+
     const handleDeleteLift = () => {
         Alert.alert(
             'Delete entire lift?',
@@ -723,6 +766,22 @@ const LiftEditorScreen: React.FC = () => {
         return getLastTimeNote(allLifts, lift, lift.movements[editingMovementIndex].name);
     }, [allLifts, editingMovementIndex, editingTarget, lift]);
 
+    // The sharer's numbers for the movement being entered, when this lift
+    // was imported from a share link. Ephemeral: lives only in the route
+    // params, never in the store. Stacked above the last-time note —
+    // target vs baseline, both needed to pick a weight.
+    const sharedNote = React.useMemo<string | null>(() => {
+        if (
+            editingTarget !== 'set' ||
+            editingMovementIndex == null ||
+            editingMovementIndex < 0 ||
+            editingMovementIndex >= lift.movements.length
+        ) {
+            return null;
+        }
+        return buildSharedNote(route.params?.sharedTargets, lift.movements[editingMovementIndex].name);
+    }, [editingMovementIndex, editingTarget, lift, route.params?.sharedTargets]);
+
     const suggestionsForInput = React.useMemo(() => {
         if (suggestionContext === 'title') {
             return titleSuggestions;
@@ -793,12 +852,22 @@ const LiftEditorScreen: React.FC = () => {
                         </GestureDetector>
                     </View>
 
-                    <TouchableOpacity
-                        onPress={handleDeleteLift}
-                        style={styles.iconButton}
-                    >
-                        <Image source={require('./assets/trash.png')} style={[styles.iconImage, { tintColor: theme.icon }]} />
-                    </TouchableOpacity>
+                    <View style={styles.headerRight}>
+                        {canShareLift(lift) && (
+                            <TouchableOpacity
+                                onPress={handleShareLift}
+                                style={styles.iconButton}
+                            >
+                                <ShareIcon color={theme.icon} />
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                            onPress={handleDeleteLift}
+                            style={styles.iconButton}
+                        >
+                            <Image source={require('./assets/trash.png')} style={[styles.iconImage, { tintColor: theme.icon }]} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Always mounted; the animated height clips it closed so the
@@ -974,6 +1043,7 @@ const LiftEditorScreen: React.FC = () => {
                                 secondPlaceholder="Enter reps..."
                                 onKeyboardDismiss={handleKeyboardDismiss}
                                 suggestions={suggestionsForInput}
+                                sharedNote={sharedNote}
                                 lastTimeNote={lastTimeNote}
                                 onFirstFieldFocus={handleEntryFooterFocus}
                                 focusRequest={focusRequest}
@@ -982,6 +1052,7 @@ const LiftEditorScreen: React.FC = () => {
                     )}
                 </View>
             </KeyboardAvoidingView>
+            {story.element}
         </SafeAreaView>
     );
 };
@@ -1010,6 +1081,11 @@ const styles = StyleSheet.create({
     iconButton: {
         paddingHorizontal: 8,
         paddingVertical: 4,
+    },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
     },
     iconImage: {
         width: 28,

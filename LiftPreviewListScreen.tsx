@@ -5,6 +5,7 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LiftPreviewList from './LiftPreviewList';
 import { LiftPreview, RootStackParamList } from './types';
+import { useStoryShare } from './useStoryShare';
 import { deleteLiftLocally } from './liftStore';
 import { useLifts } from './useLifts';
 import { compareLiftsByDateDesc } from './utils';
@@ -17,6 +18,7 @@ const LiftPreviewListScreen: React.FC = () => {
     const navigation = useNavigation<LiftPreviewListScreenNavigationProp>();
 
     const allLifts = useLifts();
+    const story = useStoryShare(allLifts);
 
     const lifts = useMemo(() => {
         return Object.entries(allLifts)
@@ -37,6 +39,9 @@ const LiftPreviewListScreen: React.FC = () => {
     const handleSelectLift = (liftId: string) => {
         navigation.navigate('LiftEditor', { liftId });
     };
+
+    // no-ops for lifts with nothing to graph
+    const handleShareLift = (liftId: string) => story.shareLift(allLifts[liftId]);
 
     const handleDeleteLift = async (liftId: string) => {
         try {
@@ -59,10 +64,12 @@ const LiftPreviewListScreen: React.FC = () => {
             <LiftPreviewList
                 lifts={lifts}
                 onSelectLift={handleSelectLift}
+                onShareLift={handleShareLift}
                 onDeleteLift={handleDeleteLift}
                 onCreateNewLift={handleCreateNewLift}
                 onOpenCharts={handleOpenCharts}
             />
+            {story.element}
         </SafeAreaView>
     );
 };
