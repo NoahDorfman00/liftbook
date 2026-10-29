@@ -47,8 +47,9 @@ static BOOL LiftbookDropsText(UIActivityType activityType)
   return NO;
 }
 
-// The notice: a pill near the top of the screen, in its own window above the
-// share sheet and the extension's compose sheet, gone after a few seconds
+// The notice: a pill centered in the top half of the screen (right under
+// the status bar it went unnoticed), in its own window above the share
+// sheet and the extension's compose sheet, gone after a few seconds
 static UIWindow *liftbookToastWindow;
 
 static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
@@ -67,26 +68,28 @@ static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
 
   UILabel *label = [UILabel new];
   label.text = message;
-  label.font = [UIFont fontWithName:@"Schoolbell-Regular" size:20]
-    ?: [UIFont fontWithName:@"Schoolbell" size:20]
-    ?: [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+  label.font = [UIFont fontWithName:@"Schoolbell-Regular" size:23]
+    ?: [UIFont fontWithName:@"Schoolbell" size:23]
+    ?: [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
   label.textColor = UIColor.whiteColor;
   label.textAlignment = NSTextAlignmentCenter;
   label.numberOfLines = 0;
   UIView *pill = [UIView new];
   pill.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.92];
-  pill.layer.cornerRadius = 20;
+  pill.layer.cornerRadius = 24;
   pill.translatesAutoresizingMaskIntoConstraints = NO;
   label.translatesAutoresizingMaskIntoConstraints = NO;
   [pill addSubview:label];
   [root.view addSubview:pill];
   [NSLayoutConstraint activateConstraints:@[
-    [label.topAnchor constraintEqualToAnchor:pill.topAnchor constant:10],
-    [label.bottomAnchor constraintEqualToAnchor:pill.bottomAnchor constant:-10],
-    [label.leadingAnchor constraintEqualToAnchor:pill.leadingAnchor constant:20],
-    [label.trailingAnchor constraintEqualToAnchor:pill.trailingAnchor constant:-20],
+    [label.topAnchor constraintEqualToAnchor:pill.topAnchor constant:14],
+    [label.bottomAnchor constraintEqualToAnchor:pill.bottomAnchor constant:-14],
+    [label.leadingAnchor constraintEqualToAnchor:pill.leadingAnchor constant:24],
+    [label.trailingAnchor constraintEqualToAnchor:pill.trailingAnchor constant:-24],
     [pill.centerXAnchor constraintEqualToAnchor:root.view.centerXAnchor],
-    [pill.topAnchor constraintEqualToAnchor:root.view.safeAreaLayoutGuide.topAnchor constant:8],
+    // centerY at a quarter of the screen height
+    [NSLayoutConstraint constraintWithItem:pill attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual
+                                    toItem:root.view attribute:NSLayoutAttributeCenterY multiplier:0.5 constant:0],
     [pill.widthAnchor constraintLessThanOrEqualToAnchor:root.view.widthAnchor constant:-48],
   ]];
 
