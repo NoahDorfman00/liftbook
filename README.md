@@ -87,6 +87,36 @@ per day. It's all drawn by hand with `react-native-svg`. The movement picker
 is a bottom sheet that previews each movement on the chart live as you tap
 through, and only lists movements you've actually logged.
 
+### Sharing
+
+A lift or a chart can be shared as an image of a notebook page, still with
+no accounts and no server.
+
+- **The image.** A lift becomes one row per movement: the name, a
+  pencil-hatched bar for each set and the top set, with 🔥 on a PR. A chart
+  becomes one pencil line (top set or volume per session) under a
+  `first → best` headline and the percentage gained. Neither card names a
+  unit, because the app never imposes one. Layout is pure geometry
+  (`storyLayout.ts`, `chartCardLayout.ts`) measured against Schoolbell's
+  real glyph widths; `StoryCard.tsx` draws it off-screen and
+  `react-native-view-shot` captures it. Each share makes two canvases: a
+  9:16 story, and a 3:4 card for Messages, which crops anything taller.
+- **The link.** A shared lift travels *inside* its link:
+  `liftbookapp.com/l#v1=<payload>`, the lift packed into the URL fragment.
+  Nothing is hosted, nothing expires, and fragments never reach a server.
+  Tapping it opens a preview in the app with **Try this lift**, which copies
+  the movements into a new lift and shows the sharer's numbers as a
+  `shared:` hint while you log your own. Without the app, the page on
+  liftbookapp.com renders the lift and links to the App Store.
+- **One share sheet, worded per app** (`LiftbookShare.m`). Messages gets
+  the 3:4 card and `Try it ↓ <link>`; most apps get `Try it → <link>`.
+  Story apps like Instagram and Snapchat drop shared text, so they get the
+  App Store link on the clipboard instead, with a "Link copied" notice for
+  the link sticker.
+
+The design decisions behind all of this, and what was tried and dropped,
+are in `FUTURE.md`.
+
 ### Storage
 
 Everything lives on the device in AsyncStorage, as one JSON blob keyed by
@@ -148,22 +178,25 @@ for Heavy's signaling.
 ## Stack
 
 - **React Native 0.80**, TypeScript, New Architecture (Fabric) and Hermes
-- **Navigation:** React Navigation native stack, three screens (list,
-  editor, charts), deep links on `liftbook://`
+- **Navigation:** React Navigation native stack: list, editor and charts,
+  plus a shared-lift preview opened by `liftbookapp.com/l` links and
+  `liftbook://`
 - **Storage:** `@react-native-async-storage/async-storage`, no backend
 - **Gestures and motion:** `react-native-gesture-handler` (swipe-to-delete,
   drawer handles), `react-native-reanimated` (a shared `useDrawer` hook
   drives both the chart's bottom sheet and the editor's date dropdown),
   `react-native-keyboard-controller` (the entry footer tracks the keyboard's
   position every frame, including interactive dismissal)
-- **Drawing:** `react-native-svg` for the charts and the ruled lines (one
-  repeating SVG pattern; it used to be about 470 absolutely positioned
-  1px Views)
+- **Drawing:** `react-native-svg` for the charts, the share images and the
+  ruled lines (one repeating SVG pattern; it used to be about 470
+  absolutely positioned 1px Views); `react-native-view-shot` captures the
+  share images
 - **Look:** the Schoolbell font, hand-drawn PNG icons tinted per theme, and
   a light/dark palette in `theme.ts` that follows the system setting,
   including a dark variant of the boot splash
 - **Tests:** Jest, covering the lift store (load, migration, corruption
-  recovery, write ordering) and the suggestion engine
+  recovery, write ordering), the suggestion engine, the share link payload
+  and both share-image layouts
 
 ### Patches
 
@@ -184,13 +217,13 @@ Two fixes live outside the app's own code:
 
 ## Release setup
 
-- iPhone only, portrait only, iOS 15.1+; version `1.0.1` in the Xcode
-  project.
+- iPhone only, portrait only, iOS 15.1+; version `1.1.0` (build 2) in the
+  Xcode project. Uses the UIScene lifecycle, which iOS 27 requires.
 - `PrivacyInfo.xcprivacy` declares no collected data and no tracking, plus
   the required-reason API entries (UserDefaults, file timestamps, system
   boot time).
 - Associated domain `applinks:liftbookapp.com` and a `liftbook://` URL
-  scheme, set up for Heavy's deep links.
+  scheme, for shared-lift links.
 - Boot splash via `react-native-bootsplash`, with light and dark variants.
 - No CI or fastlane config in the repo.
 - There's an `android/` project too, but its release build is still signed
@@ -224,6 +257,7 @@ npm run lint
 3. **Sometimes the bug is in node_modules.** The keyboard dismissing and re-raising on every mode switch came from a `reloadInputViews` call missing in React Native's Fabric renderer, which a remount hack had been papering over.
 4. **One state value beats five flags.** Collapsing the editor's focus logic into a single editing descriptor deleted a pile of timers and race conditions.
 5. **Local-only means you are the backup.** With no server copy, the store backs up corrupt data and refuses to write when it can't trust what it read.
+6. **Every app has its own idea of a link.** Messages stops recognizing a link after about 630 characters and only reads the whole fragment if a `=` follows the version, Instagram's link sticker rejects long links outright, and X's built-in browser silently ignores `liftbook://`. Sharing ended up worded per destination.
 
 ## Repo layout
 
@@ -237,6 +271,13 @@ LiftEditorScreen.tsx       the notebook page and its editing state
 MessageBubble.tsx          title / movement / set rows on the page
 EntryFooter.tsx            keyboard-riding input + suggestions
 ChartScreen.tsx            charts, range and mode switchers, movement sheet
+SharedLiftScreen.tsx       preview of a shared lift, "Try this lift"
+shareCard.ts               share link payload, PR detection, share text
+storyLayout.ts             lift share image layout (pure geometry)
+chartCardLayout.ts         chart share image layout
+StoryCard.tsx              draws either share image
+useStoryShare.tsx          renders, captures and opens the share sheet
+ShareIcon.tsx              hand-drawn share glyph
 liftStore.ts               in-memory store, migration, serialized writes
 useLifts.ts                live store hook (useSyncExternalStore)
 suggestionEngine.ts        title / movement candidates, "last time" note
@@ -245,11 +286,12 @@ theme.ts                   light and dark palettes
 useDrawer.ts               shared drawer gesture + animation
 useKeyboardEvents.ts
 utils.ts                   dates, recency sort, word-prefix matching
-__tests__/                 store, suggestion engine, app render
+__tests__/                 store, suggestion engine, share cards, app render
 patches/                   react-native Fabric keyboard patch
 assets/                    icons, boot splash, Schoolbell font
-ios/  android/             native projects
-FUTURE.md                  shelved features (Liftbook Heavy) and how to revive them
+ios/  android/             native projects (ios/liftbook/LiftbookShare.m: the share sheet)
+design/share-cards/        share image prototype and HTML preview renderer
+FUTURE.md                  share card design decisions; shelved Liftbook Heavy
 ```
 
 ## Credits
