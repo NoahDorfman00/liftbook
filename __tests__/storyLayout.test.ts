@@ -285,7 +285,7 @@ describe('story layout', () => {
 
     it('summarizes sets and volume in the footer', () => {
         const layout = layoutFor(pullDay);
-        expect(layout.texts.some((t) => t.text === '21 sets · 22,030 lb')).toBe(true);
+        expect(layout.texts.some((t) => t.text === '21 sets · 22,030 volume')).toBe(true);
         expect(layout.texts.some((t) => t.text === 'liftbookapp.com')).toBe(true);
         const dips = makeLift('4', '2026-10-26', 'Dips', [['Bench Dips', [['bw', '15']]]]);
         expect(layoutFor(dips).texts.some((t) => t.text === '1 set')).toBe(true);

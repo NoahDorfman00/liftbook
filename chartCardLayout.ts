@@ -20,7 +20,9 @@ import {
 // (header, rules, footer), with one pencil line instead of movement rows.
 // Weight mode plots each session's top set, volume mode its total — the
 // on-screen min/avg lines would only confuse someone who's never used the
-// app. The headline is the progress: first session → best.
+// app. The headline is the progress: first session → best, with the gain
+// as a percentage under it. No unit anywhere: Liftbook doesn't impose one
+// (people log in lb or kg), so neither does the card.
 
 export type ChartCardMode = 'weight' | 'volume';
 
@@ -46,6 +48,11 @@ const MAX_DOTS = 30;
 // 225 → "225", 22.5 → "22.5", 12345 → "12,345"
 export const formatAmount = (n: number): string =>
     Number.isInteger(Math.round(n * 10) / 10) ? withCommas(n) : (Math.round(n * 10) / 10).toFixed(1);
+
+// 12.3 → "12%", 2.46 → "2.5%", 0.3 → "0.3%": whole percents once they're
+// big enough that a decimal is noise
+export const formatPercent = (pct: number): string =>
+    `${pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10}%`;
 
 // "Mar 4 – Oct 26", with years when the span crosses one
 export const formatSpan = (first: string, last: string): string => {
@@ -99,12 +106,10 @@ export const buildChartCardLayout = (
     const best = sorted[bestIndex];
     const improved = best.value > first.value;
     const headline = improved
-        ? `${formatAmount(first.value)} → ${formatAmount(best.value)} lb`
-        : `${formatAmount(best.value)} lb`;
+        ? `${formatAmount(first.value)} → ${formatAmount(best.value)}`
+        : formatAmount(best.value);
     const what = mode === 'weight' ? 'top set' : 'volume per session';
-    const gain = mode === 'weight'
-        ? `+${formatAmount(best.value - first.value)} lb`
-        : `+${Math.round(((best.value - first.value) / first.value) * 100)}%`;
+    const gain = `+${formatPercent(((best.value - first.value) / first.value) * 100)}`;
     texts.push({ text: headline, x: LEFT, baseline: f.firstRule + 2 * pitch, size: HEADLINE_SIZE, color: 'ink', align: 'left' });
     texts.push({
         text: improved ? `${what} · ${gain}` : what,

@@ -47,7 +47,7 @@ Hand-drawn notebook page, Schoolbell throughout, matching the app:
  Barbell Rows           ████            185×8
  Lat Pulldown           ██▇             160×10
  …
- 21 sets · 22,030 lb                liftbookapp.com
+ 21 sets · 22,030 volume            liftbookapp.com
 ```
 
 - **Layout — compact, one row per movement**: name, pencil bars, top set.
@@ -99,7 +99,7 @@ Hand-drawn notebook page, Schoolbell throughout, matching the app:
   rule, a footer signature, a gray stamp, and an app-icon tile were all
   mocked and rejected (rule-riding and full-size felt like a second
   headline; the tile read as a sticker on the notebook).
-- **Footer**: `N sets · N lb` left, `liftbookapp.com` right (secondary) —
+- **Footer**: `N sets · N volume` left (no unit — see below), `liftbookapp.com` right (secondary) —
   the link isn't tappable inside an image, so the domain is the path in.
 - **Theme follows the app's appearance** (light/dark from `theme.ts`). A
   story fills the screen, so "light pops more" doesn't apply there, and
@@ -242,7 +242,7 @@ previews the image itself).
 ### Chart share (built)
 
 The original plan ruled out a chart-screen button as pushy; reversed in
-Oct 2026 because progress over months ("135 → 225 lb") is a different and
+Oct 2026 because progress over months ("135 → 225") is a different and
 probably stronger brag than one workout.
 
 - **Entry point**: share icon at the left of the Charts header, shown once
@@ -251,8 +251,9 @@ probably stronger brag than one workout.
 - **Image** (`chartCardLayout.ts`, drawn by the same `StoryCard`, same two
   canvases and share sheet): the lift card's header (movement name as the
   title, the data's date span on the first rule), headline `first → best`
-  (`135 → 225 lb`, subline `top set · +90 lb`; volume mode
-  `volume per session · +50%`; no arrow when the first session is still the
+  (`135 → 225`, subline `top set · +67%`; volume mode
+  `volume per session · +50%` — a percentage either way, since `+90` would
+  just repeat the headline; no arrow when the first session is still the
   best), then **one** pencil line — each session's top set, or its volume —
   with hatched shading under it. The on-screen min/avg lines are left out:
   they make sense to users, not to strangers. Time-proportional x so real
@@ -289,7 +290,10 @@ One button per screen, one format each, one deep-link handler.
   and PR detection need numeric parsing. Decide fallbacks for non-numeric /
   empty weights (likely: all-equal bars, omit volume line) and how to treat
   `+45`-style weighted-dips notation.
-- Footer assumes `lb`; the app has no unit setting today.
+- **No units on the cards (decided):** Liftbook never imposes a unit —
+  people log in lb or kg — so neither card names one: the lift footer says
+  `N volume`, the chart headline is bare numbers and its gain a
+  percentage. (A test guards the chart card.)
 - Verify on device that iMessage keeps both the image and the link
   message from one share action (some apps drop one of the two).
 - Verify on device that Messages receives the 3:4 card uncropped and

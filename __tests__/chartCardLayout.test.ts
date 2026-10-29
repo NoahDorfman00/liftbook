@@ -3,6 +3,7 @@ import {
     canShareChart,
     ChartCardPoint,
     formatAmount,
+    formatPercent,
     formatSpan,
 } from '../chartCardLayout';
 import { MESSAGE_HEIGHT, STORY_HEIGHT, STORY_WIDTH, StoryLayout, StoryText } from '../storyLayout';
@@ -38,6 +39,14 @@ describe('formatAmount', () => {
     });
 });
 
+describe('formatPercent', () => {
+    it('drops the decimal once it is noise', () => {
+        expect(formatPercent(66.67)).toBe('67%');
+        expect(formatPercent(2.46)).toBe('2.5%');
+        expect(formatPercent(5)).toBe('5%');
+    });
+});
+
 describe('formatSpan', () => {
     it('shows years only when the span crosses one', () => {
         expect(formatSpan('2026-03-04', '2026-10-26')).toBe('Mar 4 – Oct 26');
@@ -52,8 +61,8 @@ describe('buildChartCardLayout', () => {
         expect(texts(layout)).toEqual(expect.arrayContaining([
             'Bench Press',
             'Mar 4 – Oct 26',
-            '135 → 225 lb',
-            'top set · +90 lb',
+            '135 → 225',
+            'top set · +67%',
             '5 sessions',
             'liftbookapp.com',
         ]));
@@ -61,12 +70,12 @@ describe('buildChartCardLayout', () => {
 
     it('reports volume progress as a percentage', () => {
         const layout = buildChartCardLayout('Squat', points(['2026-01-01', 4000], ['2026-02-01', 5000], ['2026-03-01', 6000]), 'volume');
-        expect(texts(layout)).toEqual(expect.arrayContaining(['4,000 → 6,000 lb', 'volume per session · +50%']));
+        expect(texts(layout)).toEqual(expect.arrayContaining(['4,000 → 6,000', 'volume per session · +50%']));
     });
 
     it('drops the arrow when the first session is still the best', () => {
         const layout = buildChartCardLayout('Row', points(['2026-01-01', 200], ['2026-02-01', 180], ['2026-03-01', 190]), 'weight');
-        expect(texts(layout)).toContain('200 lb');
+        expect(texts(layout)).toContain('200');
         expect(texts(layout)).toContain('top set');
         expect(texts(layout).some((t) => t.includes('→'))).toBe(false);
     });
@@ -110,6 +119,12 @@ describe('buildChartCardLayout', () => {
             value: 100 + i,
         }));
         expect(buildChartCardLayout('Curl', many, 'weight')!.dots).toHaveLength(2); // best is the latest
+    });
+
+    it('never names a unit — people log in lb or kg', () => {
+        for (const mode of ['weight', 'volume'] as const) {
+            expect(texts(buildChartCardLayout('Bench Press', bench, mode)).some((t) => /\b(lb|lbs|kg)\b/.test(t))).toBe(false);
+        }
     });
 
     it('returns null with nothing to plot', () => {

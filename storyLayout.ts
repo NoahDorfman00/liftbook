@@ -469,7 +469,7 @@ export const buildStoryLayout = (
     const volume = liftVolume(movements);
     const summary = [`${totalSets} set${totalSets === 1 ? '' : 's'}`];
     if (volume > 0) {
-        summary.push(`${withCommas(volume)} lb`);
+        summary.push(`${withCommas(volume)} volume`); // no unit: the app doesn't impose one
     }
     pushStoryFooter(summary.join(' · '), footerY, f, texts);
 
