@@ -89,6 +89,11 @@ export const canShareLift = (lift: Lift | null | undefined): boolean =>
 // Sent alongside the story image: the tappable way in for messaging apps
 export const buildShareMessage = (lift: Lift): string => `Try it → ${buildShareUrl(lift)}`;
 
+// A shared chart has no lift to try, so its link is the App Store, tagged
+// with its own campaign token (App Store Connect → Sources → Campaigns)
+export const CHART_SHARE_URL = 'https://apps.apple.com/app/apple-store/id6755925820?pt=128332891&ct=chartshare&mt=8';
+export const CHART_SHARE_MESSAGE = `Track yours on Liftbook → ${CHART_SHARE_URL}`;
+
 // --- link payload -----------------------------------------------------------
 // The lift travels IN the URL fragment — no server, nothing expires, and
 // fragments are never sent to any host (see FUTURE.md).

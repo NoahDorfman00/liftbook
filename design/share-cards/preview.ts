@@ -1,4 +1,4 @@
-// Renders the app's real share-image layout (storyLayout.ts) to HTML so it
+// Renders the app's real share-image layouts (storyLayout.ts, chartCardLayout.ts) to HTML so it
 // can be screenshotted at full size without a simulator. Runs under Jest
 // (which compiles the app's TypeScript); not part of the normal test run:
 //
@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { buildStoryLayout, StoryLayout, StoryVariant, STORY_WIDTH } from '../../storyLayout';
 import { pencilBarPath } from '../../StoryCard';
+import { buildChartCardLayout, ChartCardPoint } from '../../chartCardLayout';
 import { Lift } from '../../types';
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -74,6 +75,18 @@ const HISTORY = [
     ]),
 ];
 
+// chart cards: a steady climb with a deload, a long volume history, a short run
+const BENCH: ChartCardPoint[] = [
+    ['2026-03-04', 135], ['2026-03-11', 145], ['2026-03-20', 145], ['2026-04-02', 155], ['2026-04-16', 165],
+    ['2026-05-01', 175], ['2026-05-20', 185], ['2026-06-10', 185], ['2026-07-01', 195], ['2026-07-22', 205],
+    ['2026-08-15', 225], ['2026-09-10', 205], ['2026-10-01', 215], ['2026-10-26', 220],
+].map(([date, value]) => ({ date: date as string, value: value as number }));
+const SQUAT_VOLUME: ChartCardPoint[] = Array.from({ length: 48 }, (_, i) => ({
+    date: new Date(Date.UTC(2025, 9, 1) + i * 7 * 86400000).toISOString().slice(0, 10),
+    value: 4000 + i * 90 + (i % 4) * 350 - (i % 7 === 0 ? 900 : 0),
+}));
+const FEW: ChartCardPoint[] = [{ date: '2026-10-14', value: 50 }, { date: '2026-10-21', value: 55 }, { date: '2026-10-28', value: 60 }];
+
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 const render = (layout: StoryLayout, theme: keyof typeof THEMES): string => {
@@ -81,6 +94,9 @@ const render = (layout: StoryLayout, theme: keyof typeof THEMES): string => {
     const rules = layout.rules.map((y) => `<line x1="0" y1="${y}" x2="${STORY_WIDTH}" y2="${y}" stroke="${c.rule}" stroke-width="2"/>`);
     const bars = layout.bars.map((bar, i) =>
         `<path d="${pencilBarPath(bar, i + 1)}" fill="url(#hatch)" stroke="${c.ink}" stroke-width="${bar.strokeWidth}" stroke-linejoin="round"/>`);
+    const paths = (layout.paths ?? []).map((p) =>
+        `<path d="${p.d}" fill="${p.fill === 'hatch' ? 'url(#hatch)' : 'none'}" stroke="${p.strokeWidth > 0 ? c.ink : 'none'}" stroke-width="${p.strokeWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${p.opacity ?? 1}"/>`);
+    const dots = (layout.dots ?? []).map((d) => `<circle cx="${d.x}" cy="${d.y}" r="${d.r}" fill="${c.ink}"/>`);
     const texts = layout.texts.map((t) => {
         const anchor = t.align === 'right' ? 'end' : t.align === 'center' ? 'middle' : 'start';
         const fill = t.color === 'ink' ? c.ink : c.secondary;
@@ -98,7 +114,7 @@ svg { display:block; font-family: Schoolbell, 'Apple Color Emoji'; }
 <defs><pattern id="hatch" width="12" height="12" patternUnits="userSpaceOnUse">
 <path d="M0 12 L12 0 M-3 3 L3 -3 M9 15 L15 9" stroke="${c.ink}" stroke-width="2.6" stroke-linecap="square"/></pattern></defs>
 <rect width="${STORY_WIDTH}" height="${layout.height}" fill="${c.paper}"/>
-${rules.join('')}${bars.join('')}${texts.join('')}
+${rules.join('')}${bars.join('')}${paths.join('')}${dots.join('')}${texts.join('')}
 </svg><div class="logo"></div></div></body></html>`;
 };
 
@@ -127,6 +143,18 @@ test('render share image previews', () => {
             all[h.id] = h;
         }
         const layout = buildStoryLayout(workout, all, variant)!;
+        fs.writeFileSync(path.join(out, `${name}__${layout.height}.html`), render(layout, theme));
+    }
+
+    const charts: Array<[string, string, ChartCardPoint[], 'weight' | 'volume', StoryVariant, keyof typeof THEMES]> = [
+        ['chart_bench_story_light', 'Bench Press', BENCH, 'weight', 'story', 'light'],
+        ['chart_bench_message_light', 'Bench Press', BENCH, 'weight', 'message', 'light'],
+        ['chart_bench_story_dark', 'Bench Press', BENCH, 'weight', 'story', 'dark'],
+        ['chart_squat_volume_story_light', 'Barbell Back Squat', SQUAT_VOLUME, 'volume', 'story', 'light'],
+        ['chart_few_message_dark', 'Seated Dumbbell Shoulder Press', FEW, 'weight', 'message', 'dark'],
+    ];
+    for (const [name, movement, points, mode, variant, theme] of charts) {
+        const layout = buildChartCardLayout(movement, points, mode, variant)!;
         fs.writeFileSync(path.join(out, `${name}__${layout.height}.html`), render(layout, theme));
     }
 });

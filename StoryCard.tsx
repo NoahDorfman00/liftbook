@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import Svg, { Defs, Line, Path, Pattern } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, Path, Pattern } from 'react-native-svg';
 import {
     ASCENT,
     STORY_WIDTH,
@@ -56,7 +56,8 @@ export const pencilBarPath = (bar: StoryBar, seed: number): string => {
     ].join(' ');
 };
 
-// The share image (1080x1920 story, or the content-height message variant). Bars and rules are one SVG in design pixels;
+// The share image (1080x1920 story, or the 3:4 message variant) — a lift's
+// rows or a chart's line. Bars, lines and rules are one SVG in design pixels;
 // text is native Text (Schoolbell + color emoji, which SVG text can't do on
 // iOS), positioned so each baseline lands where the layout puts it.
 const StoryCard = React.forwardRef<View, StoryCardProps>(({ layout, colors, scale, onLayout }, ref) => {
@@ -118,6 +119,21 @@ const StoryCard = React.forwardRef<View, StoryCardProps>(({ layout, colors, scal
                         strokeWidth={bar.strokeWidth}
                         strokeLinejoin="round"
                     />
+                ))}
+                {layout.paths?.map((path, i) => (
+                    <Path
+                        key={`path-${i}`}
+                        d={path.d}
+                        fill={path.fill === 'hatch' ? 'url(#hatch)' : 'none'}
+                        stroke={path.strokeWidth > 0 ? colors.ink : 'none'}
+                        strokeWidth={path.strokeWidth}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={path.opacity ?? 1}
+                    />
+                ))}
+                {layout.dots?.map((dot, i) => (
+                    <Circle key={`dot-${i}`} cx={dot.x} cy={dot.y} r={dot.r} fill={colors.ink} />
                 ))}
             </Svg>
 

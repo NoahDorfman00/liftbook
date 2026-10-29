@@ -5,7 +5,9 @@ existing work lives so it can be picked back up without archaeology.
 
 ## Lift share cards — story image + "try it" link
 
-**Status (Oct 2026):** the link side is **built and live** — payload
+**Status (Oct 2026):** charts share too (see "Chart share" below), and
+story composers get the link on the clipboard (see "Delivery"). The link
+side is **built and live** — payload
 encode/decode and PR detection in `shareCard.ts`, the deep-link route and
 "Shared lift" preview modal (`SharedLiftScreen.tsx`), the `shared:` set-entry
 hint, and the liftbookapp.com `/l` fallback page + AASA (liftbookSite repo).
@@ -119,10 +121,25 @@ destination (Instagram, Photos, AirDrop) gets the story. Both are captured
 off-screen with react-native-view-shot before the sheet opens; the sheet
 header shows the lift title and image. The PNG goes out **with** a
 `Try it → <link>` message in the same share action: iMessage receives image + tappable link; Instagram stories
-take the image (the link would need IG's manual link sticker — the
-`liftbookapp.com` footer covers that path). Direct "Share to Story" via
+take the image (the link needs IG's manual link sticker — the
+`liftbookapp.com` footer covers that path too). Direct "Share to Story" via
 Instagram's URL scheme requires registering a Meta app ID; skipped unless
-the share sheet route proves clunky.
+the share sheet route proves clunky. Even that route can't add a link
+sticker: the `contentURL` attribution key is limited to approved partners.
+
+**Link on the clipboard (built, unverified on device):** when the picked
+destination is a story composer that drops shared text (Instagram,
+Threads, Snapchat, TikTok, Facebook — matched by share-extension bundle-id
+prefix in `LiftbookShare.m`), the image item's `itemForActivityType:` puts
+the share's link on the clipboard and shows a "Link copied! Paste it into a
+link sticker" pill for ~3 s in its own window above the share sheet and
+the extension's compose sheet. Messages, Mail, Copy etc. never touch the
+clipboard. To verify on the phone: (1) Debug builds log each picked
+activity type (`[LiftbookShare] activity type:`), so check the prefixes
+match; (2) the pill shows over Instagram's share sheet; (3) the long
+`/l#v1=` link pastes into a link sticker intact; (4) tapping the sticker
+lands on the `/l` page in Instagram's in-app browser (universal links don't
+fire there) and its "Open in Liftbook" button opens the app.
 
 Prototype (`design/share-cards/story_card.py`) renders exact 1080×1920
 mockups with headless Chrome — it is the reference the app's layout
@@ -192,8 +209,9 @@ macOS after a real iMessage broke the link):
 
 ### UI placement (decided)
 
-Exactly two share entry points, both at "looking at a finished workout"
-moments; nothing pushier (no chart-screen button, no post-workout prompt):
+Two lift share entry points, both at "looking at a finished workout"
+moments, plus the chart share (below); nothing pushier (no post-workout
+prompt):
 
 - **Editor header**: share icon left of the trash icon (header is currently
   back | date | trash with room to spare). Hand-drawn share glyph (sketchy
@@ -210,11 +228,36 @@ Share tap → render both images off-screen → native share sheet
 directly with image + link message (no preview screen; the share sheet
 previews the image itself).
 
+### Chart share (built)
+
+The original plan ruled out a chart-screen button as pushy; reversed in
+Oct 2026 because progress over months ("135 → 225 lb") is a different and
+probably stronger brag than one workout.
+
+- **Entry point**: share icon at the left of the Charts header, shown once
+  the current movement/range/mode has at least 3 sessions
+  (`canShareChart`). Shares exactly what's on screen.
+- **Image** (`chartCardLayout.ts`, drawn by the same `StoryCard`, same two
+  canvases and share sheet): the lift card's header (movement name as the
+  title, the data's date span on the first rule), headline `first → best`
+  (`135 → 225 lb`, subline `top set · +90 lb`; volume mode
+  `volume per session · +50%`; no arrow when the first session is still the
+  best), then **one** pencil line — each session's top set, or its volume —
+  with hatched shading under it. The on-screen min/avg lines are left out:
+  they make sense to users, not to strangers. Time-proportional x so real
+  gaps show; dots on every session up to 30, then only first/best/latest;
+  only the best value is labelled. Footer `N sessions · liftbookapp.com`.
+- **Link**: no lift to try, so the message is
+  `Track yours on Liftbook → <App Store link, ct=chartshare>` and that link
+  is what goes on the clipboard for story composers.
+- Preview cases live in `design/share-cards/preview.ts` alongside the lift
+  card ones.
+
 ### Explicit non-goals (bloat guardrails)
 
 No share history, no inbox, no notifications, no try-counts, no re-share
-attribution, no second share format ("humble mode" etc.). One button, one
-format, one deep-link handler.
+attribution, no second share format per thing shared ("humble mode" etc.).
+One button per screen, one format each, one deep-link handler.
 
 ### Open implementation questions
 

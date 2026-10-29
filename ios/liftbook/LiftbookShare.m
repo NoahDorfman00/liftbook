@@ -6,11 +6,101 @@
 // One share sheet, the right image per destination: Messages gets the 3:4
 // card (it center-crops anything taller than ~4:3), everything else —
 // Instagram stories, Photos, AirDrop — gets the 9:16 story.
+//
+// Apps that take the image but drop the text that rides with it (story
+// composers) get the link on the clipboard instead, with a brief notice so
+// the user knows to paste it into a link sticker. Neither Instagram nor
+// Snapchat lets a third-party app attach a link to a story itself.
+
+// Share extensions report their bundle id as the activity type; these
+// prefixes are the apps whose story composers drop shared text
+static NSArray<NSString *> *LiftbookLinkDroppingApps(void)
+{
+  return @[
+    @"com.burbn.instagram.",       // Instagram
+    @"com.burbn.barcelona.",       // Threads
+    @"com.toyopagroup.picaboo.",   // Snapchat
+    @"com.zhiliaoapp.musically.",  // TikTok
+    @"com.facebook.Facebook.",     // Facebook
+  ];
+}
+
+static BOOL LiftbookDropsText(UIActivityType activityType)
+{
+  for (NSString *prefix in LiftbookLinkDroppingApps()) {
+    if ([activityType hasPrefix:prefix]) {
+      return YES;
+    }
+  }
+  return NO;
+}
+
+// The notice: a pill near the top of the screen, in its own window above the
+// share sheet and the extension's compose sheet, gone after a few seconds
+static UIWindow *liftbookToastWindow;
+
+static void LiftbookShowToast(UIWindowScene *scene, NSString *message)
+{
+  if (!scene) {
+    return;
+  }
+  [liftbookToastWindow setHidden:YES];
+  UIWindow *window = [[UIWindow alloc] initWithWindowScene:scene];
+  window.windowLevel = UIWindowLevelAlert + 1;
+  window.userInteractionEnabled = NO;
+  window.backgroundColor = UIColor.clearColor;
+  UIViewController *root = [UIViewController new];
+  root.view.backgroundColor = UIColor.clearColor;
+  window.rootViewController = root;
+
+  UILabel *label = [UILabel new];
+  label.text = message;
+  label.font = [UIFont fontWithName:@"Schoolbell-Regular" size:20]
+    ?: [UIFont fontWithName:@"Schoolbell" size:20]
+    ?: [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+  label.textColor = UIColor.whiteColor;
+  label.textAlignment = NSTextAlignmentCenter;
+  label.numberOfLines = 0;
+  UIView *pill = [UIView new];
+  pill.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.92];
+  pill.layer.cornerRadius = 20;
+  pill.translatesAutoresizingMaskIntoConstraints = NO;
+  label.translatesAutoresizingMaskIntoConstraints = NO;
+  [pill addSubview:label];
+  [root.view addSubview:pill];
+  [NSLayoutConstraint activateConstraints:@[
+    [label.topAnchor constraintEqualToAnchor:pill.topAnchor constant:10],
+    [label.bottomAnchor constraintEqualToAnchor:pill.bottomAnchor constant:-10],
+    [label.leadingAnchor constraintEqualToAnchor:pill.leadingAnchor constant:20],
+    [label.trailingAnchor constraintEqualToAnchor:pill.trailingAnchor constant:-20],
+    [pill.centerXAnchor constraintEqualToAnchor:root.view.centerXAnchor],
+    [pill.topAnchor constraintEqualToAnchor:root.view.safeAreaLayoutGuide.topAnchor constant:8],
+    [pill.widthAnchor constraintLessThanOrEqualToAnchor:root.view.widthAnchor constant:-48],
+  ]];
+
+  pill.alpha = 0;
+  window.hidden = NO;
+  liftbookToastWindow = window;
+  [UIView animateWithDuration:0.2 animations:^{
+    pill.alpha = 1;
+  } completion:^(BOOL finished) {
+    [UIView animateWithDuration:0.3 delay:3.0 options:0 animations:^{
+      pill.alpha = 0;
+    } completion:^(BOOL done) {
+      window.hidden = YES;
+      if (liftbookToastWindow == window) {
+        liftbookToastWindow = nil;
+      }
+    }];
+  }];
+}
 
 @interface LiftbookShareImage : NSObject <UIActivityItemSource>
 @property (nonatomic, strong) NSURL *story;
 @property (nonatomic, strong) NSURL *message;
 @property (nonatomic, copy) NSString *title;
+@property (nonatomic, copy) NSString *link;
+@property (nonatomic, weak) UIWindowScene *scene;
 @end
 
 @implementation LiftbookShareImage
@@ -20,8 +110,26 @@
   return self.story;
 }
 
+// Asked once the user picks a destination, before it opens — the moment to
+// put the link on the clipboard for apps that will drop it
 - (id)activityViewController:(UIActivityViewController *)controller itemForActivityType:(UIActivityType)activityType
 {
+#if DEBUG
+  NSLog(@"[LiftbookShare] activity type: %@", activityType);
+#endif
+  if (self.link.length > 0 && activityType && LiftbookDropsText(activityType)) {
+    NSString *link = self.link;
+    UIWindowScene *scene = self.scene;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSURL *url = [NSURL URLWithString:link];
+      NSMutableDictionary *item = [NSMutableDictionary dictionaryWithObject:link forKey:@"public.utf8-plain-text"];
+      if (url) {
+        item[@"public.url"] = url;
+      }
+      UIPasteboard.generalPasteboard.items = @[item];
+      LiftbookShowToast(scene, @"Link copied! Paste it into a link sticker");
+    });
+  }
   return [activityType isEqualToString:UIActivityTypeMessage] ? self.message : self.story;
 }
 
@@ -66,7 +174,8 @@ RCT_EXPORT_MODULE()
   return NO;
 }
 
-// story/message: paths (or file URIs) of the captured PNGs. Resolves with whether the
+// story/message: paths (or file URIs) of the captured PNGs; text: sent with
+// them; link: copied for apps that drop the text. Resolves with whether the
 // user went through with a share.
 RCT_EXPORT_METHOD(share:(NSDictionary *)options
                   resolve:(RCTPromiseResolveBlock)resolve
@@ -88,6 +197,8 @@ RCT_EXPORT_METHOD(share:(NSDictionary *)options
   image.story = story;
   image.message = message;
   image.title = options[@"title"] ?: @"liftbook";
+  image.link = [options[@"link"] isKindOfClass:[NSString class]] ? options[@"link"] : nil;
+  image.scene = presenter.view.window.windowScene;
   NSMutableArray *items = [NSMutableArray arrayWithObject:image];
   if ([options[@"text"] isKindOfClass:[NSString class]]) {
     [items addObject:options[@"text"]];

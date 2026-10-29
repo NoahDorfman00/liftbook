@@ -14,8 +14,8 @@ export const STORY_HEIGHT = 1920;
 // taller than ~4:3 — so the message variant is a 3:4 canvas, fully visible
 export const MESSAGE_HEIGHT = 1440;
 
-const LEFT = 90;
-const BASE_PITCH = 72;
+export const LEFT = 90;
+export const BASE_PITCH = 72;
 // wrapped rows: name size up to this × the rule pitch (bigger and a
 // descender would touch the cap of the line below), and never above the cap
 const WRAP_NAME_MAX = 0.88;
@@ -39,7 +39,7 @@ const LOGO_ASPECT = 805 / 384;
 // `rowsEnd`; the story keeps everything inside Instagram's safe zone (top
 // covered by the progress bar/profile row, bottom by the reply bar), the
 // message card has no overlays and uses the space for bigger rows.
-interface Frame {
+export interface Frame {
     height: number;
     titleBaseline: number;
     titleSize: number;
@@ -110,13 +110,36 @@ export interface StoryBar {
     strokeWidth: number;
 }
 
+// Free-form SVG path (the chart card's line and its hatched shading)
+export interface StoryPath {
+    d: string;
+    fill: 'none' | 'hatch';
+    strokeWidth: number;
+    opacity?: number;
+}
+
+export interface StoryDot {
+    x: number;
+    y: number;
+    r: number;
+}
+
+export interface StoryLogo {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 export interface StoryLayout {
     height: number;
     pitch: number;
     rules: number[];
     texts: StoryText[];
     bars: StoryBar[];
-    logo: { x: number; y: number; width: number; height: number };
+    paths?: StoryPath[];
+    dots?: StoryDot[];
+    logo: StoryLogo;
 }
 
 export const textWidth = (text: string, size: number): number => {
@@ -221,33 +244,42 @@ export const barHeights = (movement: Movement): number[] => {
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// "2026-10-26" → "Monday, Oct 26" (local calendar date, no UTC shift)
-export const formatStoryDate = (iso: string): string => {
+// "2026-10-26" → local calendar date (no UTC shift), or null if unparseable
+export const parseIsoDate = (iso: string): Date | null => {
     const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!match) {
-        return iso;
-    }
-    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    return `${DAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${date.getDate()}`;
+    return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
 };
 
-const withCommas = (n: number): string =>
+// "2026-10-26" → "Monday, Oct 26"
+export const formatStoryDate = (iso: string): string => {
+    const date = parseIsoDate(iso);
+    return date ? `${DAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${date.getDate()}` : iso;
+};
+
+// "2026-10-26" → "Oct 26" (or "Oct 26, 2026")
+export const formatShortDate = (iso: string, withYear = false): string => {
+    const date = parseIsoDate(iso);
+    if (!date) {
+        return iso;
+    }
+    const short = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+    return withYear ? `${short}, ${date.getFullYear()}` : short;
+};
+
+export const withCommas = (n: number): string =>
     String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-export const buildStoryLayout = (
-    lift: Lift,
-    allLifts: Record<string, Lift>,
-    variant: StoryVariant = 'story'
-): StoryLayout | null => {
-    const movements = shareableMovements(lift);
-    if (movements.length === 0) {
-        return null;
-    }
+// The header both cards share: `title` top left (shrinking, then wrapping to
+// two lines), brand lockup top right (top = title cap top), `date` on the
+// first rule. Returns the frame with the first rule pushed down below a
+// two-line title.
+export const buildStoryHeader = (
+    titleText: string,
+    date: string,
+    variant: StoryVariant,
+    texts: StoryText[]
+): { f: Frame; logo: StoryLogo } => {
     const frame = FRAMES[variant];
-    const texts: StoryText[] = [];
-    const bars: StoryBar[] = [];
-
-    // header: title top left, brand lockup top right (top = title cap top)
     const logoWidth = frame.logoHeight * LOGO_ASPECT;
     const logo = {
         x: STORY_WIDTH - LEFT - logoWidth,
@@ -255,7 +287,6 @@ export const buildStoryLayout = (
         width: logoWidth,
         height: frame.logoHeight,
     };
-    const titleText = lift.title.trim().split(/\s+/).join(' ') || 'Lift';
     const titleWidth = logo.x - TITLE_LOGO_GAP - LEFT;
     const oneLineTitle = fit(titleText, '', frame.titleSize, titleWidth, frame.titleSize * TITLE_SHRINK);
     let titleLines = [oneLineTitle.text];
@@ -293,7 +324,41 @@ export const buildStoryLayout = (
         color: 'ink',
         align: 'center',
     });
-    texts.push({ text: formatStoryDate(lift.date), x: LEFT, baseline: f.firstRule, size: f.dateSize, color: 'secondary', align: 'left' });
+    texts.push({ text: date, x: LEFT, baseline: f.firstRule, size: f.dateSize, color: 'secondary', align: 'left' });
+    return { f, logo };
+};
+
+// The footer's baseline: the last rule that fits in the frame's row region
+export const storyFooterY = (f: Frame, pitch: number): number =>
+    f.firstRule + Math.floor((f.rowsEnd + 68 - f.firstRule) / pitch) * pitch;
+
+// The footer both cards share: a summary bottom left, the domain bottom right
+export const pushStoryFooter = (summary: string, footerY: number, f: Frame, texts: StoryText[]) => {
+    texts.push({ text: summary, x: LEFT, baseline: footerY, size: f.summarySize, color: 'ink', align: 'left' });
+    texts.push({ text: 'liftbookapp.com', x: STORY_WIDTH - LEFT, baseline: footerY, size: f.urlSize, color: 'secondary', align: 'right' });
+};
+
+export const storyRules = (f: Frame, pitch: number): number[] => {
+    const rules: number[] = [];
+    for (let y = f.firstRule; y < f.height; y += pitch) {
+        rules.push(y);
+    }
+    return rules;
+};
+
+export const buildStoryLayout = (
+    lift: Lift,
+    allLifts: Record<string, Lift>,
+    variant: StoryVariant = 'story'
+): StoryLayout | null => {
+    const movements = shareableMovements(lift);
+    if (movements.length === 0) {
+        return null;
+    }
+    const texts: StoryText[] = [];
+    const bars: StoryBar[] = [];
+    const title = lift.title.trim().split(/\s+/).join(' ') || 'Lift';
+    const { f, logo } = buildStoryHeader(title, formatStoryDate(lift.date), variant, texts);
 
     const tops = movements.map((m) => topSet(m.sets));
     const stats = tops.map((set) => `${set.weight.trim()}×${set.reps.trim()}`);
@@ -366,7 +431,7 @@ export const buildStoryLayout = (
 
     // center the rows (first row's top .. last baseline) between the date and
     // the footer, snapped so every baseline stays on a rule
-    const footerY = f.firstRule + Math.floor((f.rowsEnd + 68 - f.firstRule) / pitch) * pitch;
+    const footerY = storyFooterY(f, pitch);
     const rowTop = wrapped ? 1.6 : 1.45; // first name line or tallest bar
     const block = rowTop * pitch + rowRules * (n - 1) * pitch;
     const target = f.firstRule + (footerY - 50 - f.firstRule - block) / 2 + rowTop * pitch;
@@ -406,12 +471,7 @@ export const buildStoryLayout = (
     if (volume > 0) {
         summary.push(`${withCommas(volume)} lb`);
     }
-    texts.push({ text: summary.join(' · '), x: LEFT, baseline: footerY, size: f.summarySize, color: 'ink', align: 'left' });
-    texts.push({ text: 'liftbookapp.com', x: STORY_WIDTH - LEFT, baseline: footerY, size: f.urlSize, color: 'secondary', align: 'right' });
+    pushStoryFooter(summary.join(' · '), footerY, f, texts);
 
-    const rules: number[] = [];
-    for (let y = f.firstRule; y < f.height; y += pitch) {
-        rules.push(y);
-    }
-    return { height: f.height, pitch, rules, texts, bars, logo };
+    return { height: f.height, pitch, rules: storyRules(f, pitch), texts, bars, logo };
 };

@@ -25,6 +25,9 @@ import { useDrawer } from './useDrawer';
 import { useKeyboardEvents } from './useKeyboardEvents';
 import { matchesQuery, compareLiftsByDateDesc } from './utils';
 import { useTheme } from './theme';
+import { useStoryShare } from './useStoryShare';
+import { canShareChart, ChartCardPoint } from './chartCardLayout';
+import ShareIcon from './ShareIcon';
 
 type ChartScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Charts'>;
 
@@ -266,6 +269,18 @@ const ChartScreen: React.FC = () => {
         return points;
     }, [allLifts, activeMovement, selectedRange, chartMode]);
 
+    // What a shared chart plots: each session's top set, or its volume
+    const sharePoints = useMemo<ChartCardPoint[]>(
+        () => chartData.map(p => ({ date: p.date, value: chartMode === 'volume' ? p.volume : p.maxWeight })),
+        [chartData, chartMode]
+    );
+    const story = useStoryShare(allLifts);
+    const handleShareChart = () => {
+        if (activeMovement) {
+            story.shareChart(activeMovement, sharePoints, chartMode);
+        }
+    };
+
     const allMovementNames = useMemo(
         () => getAllMovementNames(allLifts),
         [allLifts]
@@ -361,6 +376,11 @@ const ChartScreen: React.FC = () => {
                     <View style={styles.headerCenter}>
                         <Text style={[styles.headerTitle, { color: theme.textStrong }]}>Charts</Text>
                     </View>
+                    {activeMovement && canShareChart(sharePoints) && (
+                        <TouchableOpacity style={styles.shareButton} onPress={handleShareChart}>
+                            <ShareIcon color={theme.icon} />
+                        </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                         style={styles.backButton}
                         onPress={() => navigation.goBack()}
@@ -662,6 +682,7 @@ const ChartScreen: React.FC = () => {
                     </View>
                 </ReAnimated.View>
             </View>
+            {story.element}
         </View>
     );
 };
@@ -696,6 +717,12 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     backButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    shareButton: {
+        position: 'absolute',
+        left: 16,
         paddingHorizontal: 8,
         paddingVertical: 4,
     },
