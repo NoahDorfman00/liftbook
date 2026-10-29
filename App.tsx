@@ -1,12 +1,14 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { useTheme } from './theme';
-import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions, getStateFromPath } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
+import { parseShareLinkPayload } from './shareCard';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
+import SharedLiftScreen from './SharedLiftScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,6 +24,21 @@ const linking: LinkingOptions<RootStackParamList> = {
       LiftEditor: 'editor',
       Charts: 'charts',
     },
+  },
+  // Share links carry the lift in the URL *fragment* (liftbookapp.com/l#v1=…),
+  // which path matching ignores — so pull it out by hand and route to the
+  // shared-lift preview, stacked over the list so dismissing lands home.
+  getStateFromPath: (path, options) => {
+    const payload = parseShareLinkPayload(path);
+    if (payload) {
+      return {
+        routes: [
+          { name: 'LiftList' as const },
+          { name: 'SharedLift' as const, params: { payload } },
+        ],
+      };
+    }
+    return getStateFromPath(path, options);
   },
 };
 
@@ -94,6 +111,14 @@ export default function App() {
                     gestureEnabled: true,
                     gestureDirection: 'horizontal',
                     fullScreenGestureEnabled: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="SharedLift"
+                  component={SharedLiftScreen}
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
                   }}
                 />
                 <Stack.Screen

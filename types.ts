@@ -23,6 +23,9 @@ export interface LiftPreview {
 
 export type RootStackParamList = {
     LiftList: undefined;
-    LiftEditor: { liftId?: string; date?: string };
+    // sharedTargets: the sharer's sets from an imported lift, shown as
+    // ephemeral "shared:" hints during set entry — never persisted
+    LiftEditor: { liftId?: string; date?: string; sharedTargets?: Movement[] };
     Charts: undefined;
+    SharedLift: { payload: string };
 };
