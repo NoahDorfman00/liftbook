@@ -247,7 +247,7 @@ Two fixes live outside the app's own code:
 
 ## Release setup
 
-- iPhone only, portrait only, iOS 15.1+; version `1.1.0` (build 3) in the
+- iPhone only, portrait only, iOS 15.1+; version `1.2.0` (build 4) in the
   Xcode project. Uses the UIScene lifecycle, which iOS 27 requires.
 - `PrivacyInfo.xcprivacy` declares no collected data and no tracking, plus
   the required-reason API entries (UserDefaults, file timestamps, system
