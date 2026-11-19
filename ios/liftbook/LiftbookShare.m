@@ -2,6 +2,7 @@
 #import <React/RCTUtils.h>
 #import <LinkPresentation/LinkPresentation.h>
 #import <UIKit/UIKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 // One share sheet, the right image per destination: Messages gets the 3:4
 // card (it center-crops anything taller than ~4:3), everything else —
@@ -266,6 +267,174 @@ RCT_EXPORT_METHOD(share:(NSDictionary *)options
   sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 0, 0);
   sheet.popoverPresentationController.permittedArrowDirections = 0;
   [presenter presentViewController:sheet animated:YES completion:nil];
+}
+
+@end
+
+// --- Backup files ------------------------------------------------------------
+// Moving lifts between phones (backup.ts): share the whole history as one
+// `.liftbook` file, pick one from Files, and read one the app was handed.
+// The type (com.noahdorfman.liftbook.backup) is declared in Info.plist, so
+// AirDropping such a file opens the app with its URL.
+
+// A backup is a few hundred KB at most; refuse anything absurd rather than
+// pull it into memory
+static const unsigned long long LiftbookBackupMaxBytes = 50ull * 1024 * 1024;
+
+@interface LiftbookBackup : NSObject <RCTBridgeModule, UIDocumentPickerDelegate>
+@property (nonatomic, copy) RCTPromiseResolveBlock pickResolve;
+@end
+
+@implementation LiftbookBackup
+
+RCT_EXPORT_MODULE()
+
+- (dispatch_queue_t)methodQueue
+{
+  return dispatch_get_main_queue();
+}
+
++ (BOOL)requiresMainQueueSetup
+{
+  return NO;
+}
+
+// Writes the backup to a temp file and opens the share sheet with it.
+// Resolves with whether the user went through with a share.
+RCT_EXPORT_METHOD(exportFile:(NSString *)fileName
+                  contents:(NSString *)contents
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  UIViewController *presenter = RCTPresentedViewController();
+  if (!presenter) {
+    reject(@"backup_no_presenter", @"Nothing to present the share sheet from", nil);
+    return;
+  }
+  // its own directory, so the file keeps its exact name (that's what the
+  // recipient sees) without colliding with an earlier export
+  NSString *name = fileName.lastPathComponent.length > 0 ? fileName.lastPathComponent : @"Liftbook backup.liftbook";
+  NSURL *directory = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:@"liftbook-backup" isDirectory:YES];
+  NSFileManager *files = [NSFileManager defaultManager];
+  [files removeItemAtURL:directory error:nil];
+  NSError *error = nil;
+  if (![files createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error]) {
+    reject(@"backup_write_failed", @"Couldn't write the backup file", error);
+    return;
+  }
+  NSURL *file = [directory URLByAppendingPathComponent:name];
+  if (![contents writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+    reject(@"backup_write_failed", @"Couldn't write the backup file", error);
+    return;
+  }
+
+  UIActivityViewController *sheet = [[UIActivityViewController alloc] initWithActivityItems:@[file] applicationActivities:nil];
+  // can fire more than once (backing out of an extension leaves the sheet up)
+  __block BOOL settled = NO;
+  sheet.completionWithItemsHandler = ^(UIActivityType activityType, BOOL completed, NSArray *returnedItems, NSError *shareError) {
+    if (!settled) {
+      settled = YES;
+      resolve(@(completed));
+    }
+  };
+  // iPad presents the sheet as a popover, which needs an anchor
+  sheet.popoverPresentationController.sourceView = presenter.view;
+  sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 0, 0);
+  sheet.popoverPresentationController.permittedArrowDirections = 0;
+  [presenter presentViewController:sheet animated:YES completion:nil];
+}
+
+// Opens the Files picker. Resolves with the URL of a copy of the chosen
+// file, or null if the user backed out. Besides backups it offers JSON and
+// plain text, for a file whose name got mangled on the way over — the
+// import screen rejects anything that isn't a backup.
+RCT_EXPORT_METHOD(pickFile:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  UIViewController *presenter = RCTPresentedViewController();
+  if (!presenter) {
+    reject(@"backup_no_presenter", @"Nothing to present the file picker from", nil);
+    return;
+  }
+  if (self.pickResolve) {
+    self.pickResolve([NSNull null]);
+    self.pickResolve = nil;
+  }
+  NSMutableArray<UTType *> *types = [NSMutableArray array];
+  UTType *backup = [UTType typeWithIdentifier:@"com.noahdorfman.liftbook.backup"];
+  if (backup) {
+    [types addObject:backup];
+  }
+  [types addObject:UTTypeJSON];
+  [types addObject:UTTypePlainText];
+  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:types asCopy:YES];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  self.pickResolve = resolve;
+  [presenter presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
+{
+  RCTPromiseResolveBlock resolve = self.pickResolve;
+  self.pickResolve = nil;
+  if (resolve) {
+    resolve(urls.firstObject.absoluteString ?: (id)[NSNull null]);
+  }
+}
+
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller
+{
+  RCTPromiseResolveBlock resolve = self.pickResolve;
+  self.pickResolve = nil;
+  if (resolve) {
+    resolve([NSNull null]);
+  }
+}
+
+// Reads a picked or opened file as text. The app only ever holds a copy
+// (the picker's, or the one iOS drops in Documents/Inbox), so the copy is
+// deleted once read rather than left to pile up.
+RCT_EXPORT_METHOD(readFile:(NSString *)urlString
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  NSURL *url = [urlString hasPrefix:@"file://"] ? [NSURL URLWithString:urlString] : nil;
+  if (!url || !url.isFileURL) {
+    reject(@"backup_read_failed", @"Not a file", nil);
+    return;
+  }
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    BOOL scoped = [url startAccessingSecurityScopedResource];
+    NSError *error = nil;
+    NSString *contents = nil;
+    NSNumber *size = nil;
+    [url getResourceValue:&size forKey:NSURLFileSizeKey error:nil];
+    if (size && size.unsignedLongLongValue > LiftbookBackupMaxBytes) {
+      error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadTooLargeError userInfo:nil];
+    } else {
+      contents = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:&error];
+    }
+    if (scoped) {
+      [url stopAccessingSecurityScopedResource];
+    }
+
+    // only ever delete the app's own copies
+    NSString *path = url.URLByStandardizingPath.URLByResolvingSymlinksInPath.path;
+    NSString *temp = [NSURL fileURLWithPath:NSTemporaryDirectory()].URLByResolvingSymlinksInPath.path;
+    NSString *documents = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject.URLByResolvingSymlinksInPath.path;
+    NSString *inbox = documents ? [documents stringByAppendingPathComponent:@"Inbox"] : nil;
+    if ((temp && [path hasPrefix:[temp stringByAppendingString:@"/"]]) ||
+        (inbox && [path hasPrefix:[inbox stringByAppendingString:@"/"]])) {
+      [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    }
+
+    if (contents) {
+      resolve(contents);
+    } else {
+      reject(@"backup_read_failed", @"Couldn't read the file", error);
+    }
+  });
 }
 
 @end

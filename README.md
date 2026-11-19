@@ -143,7 +143,7 @@ whole blob back through a serialized queue, so rapid edits can't interleave
 (last write wins). Screens subscribe via a `useLifts()` hook built on
 `useSyncExternalStore`, so a save on one screen re-renders the others.
 
-The store is paranoid about losing data, because there is no other copy:
+The store is paranoid about losing data, because it holds the only live copy:
 
 - **Corrupt blob:** the raw string is copied to a backup key before starting
   fresh.
@@ -154,6 +154,33 @@ The store is paranoid about losing data, because there is no other copy:
   while `id` was `undefined` (keyed by the string `"undefined"`). A one-time
   migration fills in missing dates and ids from the key and re-keys
   everything by id.
+
+### Moving to a new phone
+
+There's no account to sign into, so history moves two ways, both built on
+the same local blob:
+
+- **Device backups.** `RCTAsyncStorageExcludeFromBackup` is `false` in
+  Info.plist. AsyncStorage keeps its directory *out* of iCloud and Finder
+  backups unless told otherwise, which meant a phone restored from backup
+  came back with an empty Liftbook. Now the lifts ride along.
+- **A backup file.** The footer under the lift list (`214 lifts · Back up`)
+  exports every lift as one `.liftbook` file to the share sheet — AirDrop,
+  Files, Messages, Mail. Opening that file on another phone (the app owns
+  the `com.noahdorfman.liftbook.backup` type, so AirDrop lands straight in
+  it), or picking it with "import a backup", shows what's inside and
+  imports it.
+
+Import only ever adds. A lift whose id is already on the phone is skipped,
+never overwritten: lifts carry no "last edited" time, so there's no safe way
+to pick the newer copy. That also makes importing the same file twice a
+no-op. The file is plain JSON with a version number; the app refuses files
+from a newer format instead of importing them half-understood, and every
+lift is cut down to the known fields before it reaches the store.
+
+The format, merge and link handling live in `backup.ts`; the file work
+(write + share sheet, Files picker, reading an opened file) is the
+`LiftbookBackup` module in `ios/liftbook/LiftbookShare.m`.
 
 ### What happened to Firebase
 
@@ -283,16 +310,18 @@ useStoryShare.tsx          renders, captures and opens the share sheet
 ShareIcon.tsx              hand-drawn share glyph
 liftStore.ts               in-memory store, migration, serialized writes
 useLifts.ts                live store hook (useSyncExternalStore)
+backup.ts                  backup file format, import merge, incoming-file links
+ImportBackupScreen.tsx     what's in a backup file + the Import button
 suggestionEngine.ts        title / movement candidates, "last time" note
 suggestions.ts             default titles and movements
 theme.ts                   light and dark palettes
 useDrawer.ts               shared drawer gesture + animation
 useKeyboardEvents.ts
 utils.ts                   dates, recency sort, word-prefix matching
-__tests__/                 store, suggestion engine, share cards, app render
+__tests__/                 store, suggestion engine, share cards, backups, app render
 patches/                   react-native Fabric keyboard patch
 assets/                    icons, boot splash, Schoolbell font
-ios/  android/             native projects (ios/liftbook/LiftbookShare.m: the share sheet)
+ios/  android/             native projects (ios/liftbook/LiftbookShare.m: the share sheet, backup files)
 design/share-cards/        share image prototype and HTML preview renderer
 FUTURE.md                  share card design decisions; shelved Liftbook Heavy
 ```

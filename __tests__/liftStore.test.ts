@@ -5,6 +5,7 @@ import {
     retrieveLift,
     saveLiftLocally,
     deleteLiftLocally,
+    importLifts,
     subscribeToLifts,
     getLiftsSnapshot,
     __resetLiftStoreForTests,
@@ -386,5 +387,42 @@ describe('read failure safety', () => {
         await expect(retrieveLift('x')).resolves.toBeNull();
         await expect(saveLiftLocally(lift('1', '2026-01-01', 'A'))).resolves.toBeUndefined();
         await expect(deleteLiftLocally('1')).resolves.toBeUndefined();
+    });
+});
+
+describe('importLifts', () => {
+    it('adds new lifts in a single write and notifies subscribers', async () => {
+        await seed({ a: lift('a', '2026-01-01', 'A') });
+        await retrieveLifts();
+        (AsyncStorage.setItem as jest.Mock).mockClear();
+        const listener = jest.fn();
+        subscribeToLifts(listener);
+
+        const added = await importLifts([lift('b', '2026-01-02', 'B'), lift('c', '2026-01-03', 'C')]);
+
+        expect(added).toBe(2);
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
+        expect(Object.keys(getLiftsSnapshot()).sort()).toEqual(['a', 'b', 'c']);
+        const stored = JSON.parse((await AsyncStorage.getItem(LIFTS_KEY))!);
+        expect(Object.keys(stored).sort()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('never overwrites a lift that is already stored', async () => {
+        await seed({ a: lift('a', '2026-01-01', 'Mine') });
+
+        const added = await importLifts([lift('a', '2026-01-01', 'From backup'), lift('b', '2026-01-02', 'B')]);
+
+        expect(added).toBe(1);
+        expect((await retrieveLift('a'))!.title).toBe('Mine');
+    });
+
+    it('writes nothing when there is nothing new', async () => {
+        await seed({ a: lift('a', '2026-01-01', 'A') });
+        await retrieveLifts();
+        (AsyncStorage.setItem as jest.Mock).mockClear();
+
+        await expect(importLifts([lift('a', '2026-01-01', 'A')])).resolves.toBe(0);
+        expect(AsyncStorage.setItem).not.toHaveBeenCalled();
     });
 });

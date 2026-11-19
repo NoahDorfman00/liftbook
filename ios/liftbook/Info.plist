@@ -6,6 +6,21 @@
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>Liftbook</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Liftbook Backup</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.noahdorfman.liftbook.backup</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -39,11 +54,15 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 	</dict>
+	<key>RCTAsyncStorageExcludeFromBackup</key>
+	<false/>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>
@@ -81,5 +100,30 @@
 	<string>Automatic</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Liftbook Backup</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.noahdorfman.liftbook.backup</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>liftbook</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.liftbook.backup+json</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

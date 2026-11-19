@@ -179,6 +179,25 @@ export const saveLiftLocally = async (lift: Lift): Promise<void> => {
     await persist();
 };
 
+// Add lifts from a backup (see backup.ts) in one write. Only ever adds: a
+// lift whose id is already in the store is left as it is. Returns how many
+// were added.
+export const importLifts = async (incoming: Lift[]): Promise<number> => {
+    const lifts = await loadStore();
+    let added = 0;
+    incoming.forEach(lift => {
+        if (!lifts[lift.id]) {
+            lifts[lift.id] = lift;
+            added += 1;
+        }
+    });
+    if (added > 0) {
+        notifyListeners();
+        await persist();
+    }
+    return added;
+};
+
 // Delete a lift locally by ID
 export const deleteLiftLocally = async (liftId: string): Promise<void> => {
     const lifts = await loadStore();

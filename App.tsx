@@ -1,14 +1,16 @@
 import * as React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Linking } from 'react-native';
 import { useTheme } from './theme';
 import { NavigationContainer, LinkingOptions, getStateFromPath } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
 import { parseShareLinkPayload } from './shareCard';
+import { parseImportPath, wrapIncomingUrl } from './backup';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
 import SharedLiftScreen from './SharedLiftScreen';
+import ImportBackupScreen from './ImportBackupScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -38,7 +40,35 @@ const linking: LinkingOptions<RootStackParamList> = {
         ],
       };
     }
+    // A backup file opened from outside (see getInitialURL/subscribe below)
+    const fileUrl = parseImportPath(path);
+    if (fileUrl) {
+      return {
+        routes: [
+          { name: 'LiftList' as const },
+          { name: 'ImportBackup' as const, params: { fileUrl } },
+        ],
+      };
+    }
     return getStateFromPath(path, options);
+  },
+  // Same as React Navigation's defaults, except that a backup file handed to
+  // the app (AirDrop, "Open in Liftbook") arrives as a file:// URL, which
+  // isn't under any prefix — wrap it in a liftbook:// link so it routes.
+  getInitialURL: () =>
+    Promise.race([
+      Linking.getInitialURL().then(wrapIncomingUrl),
+      // React Native can leave getInitialURL pending; don't hold up launch
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 150)),
+    ]),
+  subscribe: (listener) => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      const wrapped = wrapIncomingUrl(url);
+      if (wrapped) {
+        listener(wrapped);
+      }
+    });
+    return () => subscription.remove();
   },
 };
 
@@ -116,6 +146,14 @@ export default function App() {
                 <Stack.Screen
                   name="SharedLift"
                   component={SharedLiftScreen}
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                  }}
+                />
+                <Stack.Screen
+                  name="ImportBackup"
+                  component={ImportBackupScreen}
                   options={{
                     headerShown: false,
                     presentation: 'modal',
