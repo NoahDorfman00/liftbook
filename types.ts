@@ -28,4 +28,7 @@ export type RootStackParamList = {
     LiftEditor: { liftId?: string; date?: string; sharedTargets?: Movement[] };
     Charts: undefined;
     SharedLift: { payload: string };
+    // fileUrl: a backup file the app can read — opened from outside
+    // (AirDrop, "Open in Liftbook") or chosen in the Files picker
+    ImportBackup: { fileUrl: string };
 };

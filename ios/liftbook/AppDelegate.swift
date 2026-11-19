@@ -62,8 +62,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     from connectionOptions: UIScene.ConnectionOptions
   ) -> [UIApplication.LaunchOptionsKey: Any] {
     var options: [UIApplication.LaunchOptionsKey: Any] = [:]
-    if let url = connectionOptions.urlContexts.first?.url {
-      options[.url] = url
+    if let context = connectionOptions.urlContexts.first {
+      options[.url] = LiftbookIncomingFile.localURL(for: context)
     }
     if let activity = connectionOptions.userActivities.first(where: {
       $0.activityType == NSUserActivityTypeBrowsingWeb
@@ -76,10 +76,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     return options
   }
 
-  // Handle custom URL scheme (liftbook://) while running
+  // Handle custom URL scheme (liftbook://) and opened backup files while running
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     for context in URLContexts {
-      _ = RCTLinkingManager.application(UIApplication.shared, open: context.url, options: [:])
+      let url = LiftbookIncomingFile.localURL(for: context)
+      _ = RCTLinkingManager.application(UIApplication.shared, open: url, options: [:])
     }
   }
 
@@ -90,6 +91,67 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       continue: userActivity,
       restorationHandler: { _ in }
     )
+  }
+}
+
+// A backup file handed to the app (tapped in Files, "Open With", the share
+// sheet, AirDrop). Two things can go wrong between iOS and JavaScript:
+//  - a file opened in place is only readable through the URL object iOS
+//    passed in; the string that reaches JavaScript has lost that access.
+//    So it's copied into tmp here, and JavaScript gets the copy.
+//  - React Native drops a URL that arrives before JavaScript is listening
+//    (cold launch). So the latest file is also parked here, and JavaScript
+//    asks for it when it starts (LiftbookBackup.takeIncomingFile in
+//    LiftbookShare.m, which finds this class by name).
+@objc(LiftbookIncomingFile)
+class LiftbookIncomingFile: NSObject {
+  private static let lock = NSLock()
+  private static var pending: String?
+
+  // The URL to pass on to React Native: unchanged for links, a readable
+  // local file for files
+  static func localURL(for context: UIOpenURLContext) -> URL {
+    let url = context.url
+    guard url.isFileURL else { return url }
+    let local = context.options.openInPlace ? (copyToTemp(url) ?? url) : url
+    lock.lock()
+    pending = local.absoluteString
+    lock.unlock()
+    return local
+  }
+
+  // The parked file URL, if any; hands it out once
+  @objc static func takePendingURL() -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    let url = pending
+    pending = nil
+    return url
+  }
+
+  private static func copyToTemp(_ url: URL) -> URL? {
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer {
+      if scoped { url.stopAccessingSecurityScopedResource() }
+    }
+    let files = FileManager.default
+    // its own directory, so the copy keeps the file's name
+    let directory = files.temporaryDirectory
+      .appendingPathComponent("liftbook-incoming", isDirectory: true)
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let copy = directory.appendingPathComponent(url.lastPathComponent)
+    var copied = false
+    var coordinationError: NSError?
+    NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { readable in
+      do {
+        try files.createDirectory(at: directory, withIntermediateDirectories: true)
+        try files.copyItem(at: readable, to: copy)
+        copied = true
+      } catch {
+        copied = false
+      }
+    }
+    return copied ? copy : nil
   }
 }
 

@@ -14,6 +14,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
 import { LiftPreview } from './types';
 import { formatDisplayDate } from './utils';
+import { liftCount } from './backup';
 import { useTheme } from './theme';
 
 interface LiftPreviewListProps {
@@ -23,6 +24,10 @@ interface LiftPreviewListProps {
     onDeleteLift: (liftId: string) => void;
     onCreateNewLift: () => void;
     onOpenCharts: () => void;
+    // Moving lifts between phones (backup.ts). Left out where the platform
+    // can't do it, which hides both entry points.
+    onBackUp?: () => void;       // footer under the list: export or import
+    onImportBackup?: () => void; // empty state: straight to the file picker
 }
 
 const ACTION_WIDTH = 80;
@@ -33,6 +38,8 @@ const PLUS_ICON_WIDTH = 28;
 const PLUS_BUTTON_HORIZONTAL_PADDING = 8;
 const PLUS_EFFECTIVE_WIDTH = PLUS_ICON_WIDTH + PLUS_BUTTON_HORIZONTAL_PADDING * 2;
 const ARROW_RIGHT_MARGIN = PLUS_EFFECTIVE_WIDTH / 2; // center of the plus button
+
+const BACKUP_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 
 const ChartIcon = ({ color }: { color: string }) => (
     <Svg width={26} height={26} viewBox="0 0 26 26" fill="none">
@@ -66,6 +73,8 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
     onDeleteLift,
     onCreateNewLift,
     onOpenCharts,
+    onBackUp,
+    onImportBackup,
 }) => {
     const theme = useTheme();
     const swipeableRefs = React.useRef<Map<string, Swipeable>>(new Map());
@@ -170,6 +179,26 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
 
     const hasLifts = lifts.length > 0;
 
+    // Only rendered under a non-empty list; with no lifts there is nothing
+    // to back up, and the empty state offers import instead
+    const listFooter = onBackUp ? (
+        <View style={styles.backupFooter}>
+            <Text style={[styles.backupFooterText, { color: theme.textTertiary }]}>
+                {liftCount(lifts.length)} ·{' '}
+            </Text>
+            <TouchableOpacity
+                onPress={onBackUp}
+                hitSlop={BACKUP_HIT_SLOP}
+                accessibilityRole="button"
+                accessibilityLabel="Back up lifts"
+            >
+                <Text style={[styles.backupFooterText, styles.backupFooterLink, { color: theme.textSecondary }]}>
+                    Back up
+                </Text>
+            </TouchableOpacity>
+        </View>
+    ) : null;
+
     return (
         <View style={[styles.container, { backgroundColor: theme.surface }]}>
             <View style={[styles.header, { borderBottomColor: theme.line, backgroundColor: theme.surface }]}>
@@ -201,6 +230,7 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     renderItem={renderItem}
                     keyExtractor={(item) => item.id}
                     contentContainerStyle={[styles.listContent, { backgroundColor: theme.paper }]}
+                    ListFooterComponent={listFooter}
                 />
             ) : (
                 <View style={[styles.emptyStateContainer, { backgroundColor: theme.paper }]}>
@@ -211,6 +241,18 @@ const LiftPreviewList: React.FC<LiftPreviewListProps> = ({
                     <Text style={[styles.emptyStateText, { color: theme.textStrong }]}>
                         log your first lift
                     </Text>
+                    {!!onImportBackup && (
+                        <TouchableOpacity
+                            style={styles.emptyStateImport}
+                            onPress={onImportBackup}
+                            hitSlop={BACKUP_HIT_SLOP}
+                            accessibilityRole="button"
+                        >
+                            <Text style={[styles.emptyStateImportText, { color: theme.textSecondary }]}>
+                                or import a backup
+                            </Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             )}
         </View>
@@ -305,6 +347,29 @@ const styles = StyleSheet.create({
         marginBottom: 4,
         alignSelf: 'flex-end',
         marginRight: ARROW_RIGHT_MARGIN,
+    },
+    backupFooter: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingTop: 20,
+        paddingBottom: 28,
+    },
+    backupFooterText: {
+        fontSize: 16,
+        fontFamily: 'Schoolbell',
+    },
+    backupFooterLink: {
+        textDecorationLine: 'underline',
+    },
+    emptyStateImport: {
+        alignSelf: 'center',
+        marginTop: 12,
+    },
+    emptyStateImportText: {
+        fontSize: 18,
+        fontFamily: 'Schoolbell',
+        textDecorationLine: 'underline',
     },
     emptyStateText: {
         fontSize: 24,
