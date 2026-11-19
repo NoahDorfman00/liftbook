@@ -5,7 +5,7 @@ import { NavigationContainer, LinkingOptions, getStateFromPath } from '@react-na
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
 import { parseShareLinkPayload } from './shareCard';
-import { parseImportPath, wrapIncomingUrl } from './backup';
+import { isBackupFileUrl, parseImportPath, takeIncomingBackupFile, wrapIncomingUrl } from './backup';
 import LiftPreviewListScreen from './LiftPreviewListScreen';
 import LiftEditorScreen from './LiftEditorScreen';
 import ChartScreen from './ChartScreen';
@@ -55,15 +55,33 @@ const linking: LinkingOptions<RootStackParamList> = {
   // Same as React Navigation's defaults, except that a backup file handed to
   // the app (AirDrop, "Open in Liftbook") arrives as a file:// URL, which
   // isn't under any prefix — wrap it in a liftbook:// link so it routes.
-  getInitialURL: () =>
-    Promise.race([
+  // A file the app was launched with comes from the native side directly
+  // (takeIncomingBackupFile): React Native's own getInitialURL can miss it.
+  getInitialURL: async () => {
+    const file = await takeIncomingBackupFile();
+    if (file) {
+      return wrapIncomingUrl(file);
+    }
+    return Promise.race([
       Linking.getInitialURL().then(wrapIncomingUrl),
       // React Native can leave getInitialURL pending; don't hold up launch
       new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 150)),
-    ]),
+    ]);
+  },
   subscribe: (listener) => {
     const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (isBackupFileUrl(url)) {
+        // it got here, so it isn't waiting on the native side any more
+        takeIncomingBackupFile();
+      }
       const wrapped = wrapIncomingUrl(url);
+      if (wrapped) {
+        listener(wrapped);
+      }
+    });
+    // a file that arrived after launch but before this listener existed
+    takeIncomingBackupFile().then((file) => {
+      const wrapped = wrapIncomingUrl(file);
       if (wrapped) {
         listener(wrapped);
       }

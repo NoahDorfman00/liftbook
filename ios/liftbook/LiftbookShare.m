@@ -281,6 +281,11 @@ RCT_EXPORT_METHOD(share:(NSDictionary *)options
 // pull it into memory
 static const unsigned long long LiftbookBackupMaxBytes = 50ull * 1024 * 1024;
 
+// LiftbookIncomingFile (AppDelegate.swift), looked up by name
+@protocol LiftbookIncomingFileSource
++ (nullable NSString *)takePendingURL;
+@end
+
 @interface LiftbookBackup : NSObject <RCTBridgeModule, UIDocumentPickerDelegate>
 @property (nonatomic, copy) RCTPromiseResolveBlock pickResolve;
 @end
@@ -390,6 +395,16 @@ RCT_EXPORT_METHOD(pickFile:(RCTPromiseResolveBlock)resolve
   if (resolve) {
     resolve([NSNull null]);
   }
+}
+
+// A backup file iOS handed the app that JavaScript hasn't seen yet — the
+// one the app was launched with, or one that arrived before it was
+// listening. Resolves with its URL once, then null.
+RCT_EXPORT_METHOD(takeIncomingFile:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  Class<LiftbookIncomingFileSource> incoming = (Class<LiftbookIncomingFileSource>)NSClassFromString(@"LiftbookIncomingFile");
+  resolve([incoming takePendingURL] ?: (id)[NSNull null]);
 }
 
 // Reads a picked or opened file as text. The app only ever holds a copy

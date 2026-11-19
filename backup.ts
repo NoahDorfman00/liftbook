@@ -186,6 +186,9 @@ interface NativeBackup {
     pickFile(): Promise<string | null>;
     // Reads a picked or opened file, then deletes the app's copy of it.
     readFile(url: string): Promise<string>;
+    // A backup file the app was handed that hasn't been seen yet (the one it
+    // was launched with). Resolves with its URL once, then null.
+    takeIncomingFile(): Promise<string | null>;
 }
 
 const nativeBackup: NativeBackup | undefined =
@@ -205,6 +208,17 @@ export const pickBackupFile = (): Promise<string | null> => {
         return Promise.reject(new Error('backup not supported'));
     }
     return nativeBackup.pickFile();
+};
+
+// Never rejects: a missed file is no reason to hold up launch
+export const takeIncomingBackupFile = (): Promise<string | null> => {
+    if (!nativeBackup || !nativeBackup.takeIncomingFile) {
+        return Promise.resolve(null);
+    }
+    return nativeBackup.takeIncomingFile().then(
+        (url) => url ?? null,
+        () => null,
+    );
 };
 
 export const readBackupFile = (url: string): Promise<string> => {
